@@ -727,7 +727,14 @@ hr { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
   <!-- Actions -->
   <div class="btn-row">
     <button class="btn btn-primary" id="analyze-btn" disabled>&#9889; Analyze</button>
-    <button class="btn btn-success" id="download-btn" style="display:none">&#8595; Download Results (.xlsx)</button>
+    <div id="download-row" style="display:none; align-items:center; gap:8px; flex-wrap:wrap; justify-content:center;">
+      <div style="display:flex; align-items:center; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-sm); overflow:hidden;">
+        <input id="filename-input" type="text" value="operator_okta_mapping"
+          style="border:none; outline:none; background:transparent; color:var(--text); font-family:'JetBrains Mono',monospace; font-size:13px; font-weight:500; padding:9px 12px; width:220px;">
+        <span style="padding:9px 10px 9px 0; color:var(--text-muted); font-family:'JetBrains Mono',monospace; font-size:12px; user-select:none;">.xlsx</span>
+      </div>
+      <button class="btn btn-success" id="download-btn">&#8595; Download</button>
+    </div>
   </div>
 
   <!-- Progress -->
@@ -1614,7 +1621,7 @@ $('analyze-btn').addEventListener('click', async () => {
   if (!S.opsRaw || !S.oktaRaw) return;
 
   $('analyze-btn').disabled = true;
-  $('download-btn').style.display = 'none';
+  $('download-row').style.display = 'none';
   $('progress-wrap').style.display = 'block';
   $('log-box').innerHTML = '';
   $('review-list').innerHTML = '';
@@ -1657,7 +1664,7 @@ $('analyze-btn').addEventListener('click', async () => {
   updateSummary(S.opsRaw.length, kept.length, S.okta.length, results);
   renderReviewUI(results.needsReview);
 
-  $('download-btn').style.display = 'inline-block';
+  $('download-row').style.display = 'flex';
   $('analyze-btn').disabled = false;
 });
 
@@ -1680,9 +1687,11 @@ $('gap-range').addEventListener('input', e => {
 $('download-btn').addEventListener('click', () => {
   if (!S.results) return;
   try {
-    const wb = buildWorkbook(mergeResolutions(S.results));
-    XLSX.writeFile(wb, 'operator_okta_mapping.xlsx');
-    log('Exported: operator_okta_mapping.xlsx', 'ok');
+    const wb       = buildWorkbook(mergeResolutions(S.results));
+    const rawName  = ($('filename-input').value || 'operator_okta_mapping').trim().replace(/\.xlsx$/i, '');
+    const filename = (rawName || 'operator_okta_mapping') + '.xlsx';
+    XLSX.writeFile(wb, filename);
+    log(`Exported: ${filename}`, 'ok');
   } catch (err) {
     log('Export error: ' + err.message, 'err');
     alert('Export failed: ' + err.message + '\n\nNote: file downloads require running this page locally in a browser.');
