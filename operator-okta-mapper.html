@@ -1635,7 +1635,39 @@ function updateSummary(totRaw, totFilt, totOkta, res) {
 }
 
 function checkReady() {
-  $('analyze-btn').disabled = !(S.opsRaw && S.oktaRaw);
+  const customer = $('msg-customer').value.trim();
+  const env      = $('msg-env').value.trim();
+  const missingCustomer = !customer;
+  const missingEnv      = !env;
+
+  $('msg-customer').style.borderColor = missingCustomer ? 'var(--danger)' : '';
+  $('msg-env').style.borderColor      = missingEnv      ? 'var(--danger)' : '';
+
+  $('analyze-btn').disabled = !(S.opsRaw && S.oktaRaw && customer && env);
+}
+
+function defaultFilename() {
+  const customer = $('msg-customer').value.trim().replace(/\s+/g, '_') || 'Customer';
+  const env      = $('msg-env').value.trim().replace(/\s+/g, '_')      || 'Env';
+  const now      = new Date();
+  const pad      = n => String(n).padStart(2, '0');
+  const ts       = pad(now.getDate()) + pad(now.getMonth() + 1) +
+                   pad(now.getHours()) + pad(now.getMinutes()) + pad(now.getSeconds());
+  return `${customer}_${env}_${ts}`;
+}
+
+function resetPage() {
+  S.opsRaw = null; S.oktaRaw = null;
+  S.operators = []; S.okta = []; S.results = null;
+  $('summary-wrap').style.display  = 'none';
+  $('download-row').style.display  = 'none';
+  $('review-wrap').style.display   = 'none';
+  $('review-list').innerHTML       = '';
+  $('log-wrap').style.display      = 'none';
+  $('log-box').innerHTML           = '';
+  $('progress-wrap').style.display = 'none';
+  $('progress-bar').style.width    = '0%';
+  checkReady();
 }
 
 /* ============================================================
@@ -1670,6 +1702,9 @@ function setStatus(statusId, cardId, msg, ok) {
 }
 
 function handleOpsFile(file, statusId, cardId) {
+  const hadOkta = S.oktaRaw;
+  resetPage();
+  if (hadOkta) { S.oktaRaw = hadOkta; setStatus('okta-status', 'okta-card', `✓ ${hadOkta.length} users loaded`, true); }
   const r = new FileReader();
   r.onload = e => {
     try {
@@ -1687,6 +1722,9 @@ function handleOpsFile(file, statusId, cardId) {
 }
 
 function handleOktaFile(file, statusId, cardId) {
+  const hadOps = S.opsRaw;
+  resetPage();
+  if (hadOps) { S.opsRaw = hadOps; setStatus('ops-status', 'ops-card', `✓ ${hadOps.length} rows loaded`, true); }
   const r = new FileReader();
   r.onload = e => {
     try {
@@ -1753,6 +1791,7 @@ $('analyze-btn').addEventListener('click', async () => {
   updateSummary(S.opsRaw.length, kept.length, S.okta.length, results);
   renderReviewUI(results.needsReview);
 
+  $('filename-input').value = defaultFilename();
   $('download-row').style.display = 'flex';
   $('analyze-btn').disabled = false;
 });
@@ -1769,6 +1808,9 @@ $('gap-range').addEventListener('input', e => {
   S.gap = +e.target.value;
   $('gap-val').textContent = e.target.value;
 });
+
+$('msg-customer').addEventListener('input', checkReady);
+$('msg-env').addEventListener('input', checkReady);
 
 /* ============================================================
    DOWNLOAD
