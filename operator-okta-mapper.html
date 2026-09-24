@@ -831,7 +831,10 @@ hr { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
   <div class="review-wrap" id="review-wrap">
     <div class="review-header">
       <p class="section-label" style="margin:0">Needs Review</p>
-      <span class="review-progress-badge" id="review-badge">0 / 0 resolved</span>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <button class="copy-msg-btn" id="send-review-email-btn" onclick="sendReviewEmail()" title="Open email client with all unresolved duplicates">✉ Send Review Email</button>
+        <span class="review-progress-badge" id="review-badge">0 / 0 resolved</span>
+      </div>
     </div>
     <div id="review-list"></div>
   </div>
@@ -1315,6 +1318,66 @@ function fallbackCopy(text) {
     document.body.removeChild(ta);
     return ok;
   } catch { return false; }
+}
+
+/* ---- Send Review Email: consolidated mailto for all unresolved duplicates ---- */
+function sendReviewEmail() {
+  if (!S.results) return;
+  const customer = ($('msg-customer').value || '').trim() || '<Customer>';
+  const env      = ($('msg-env').value || '').trim()      || '<Environment>';
+
+  // Collect unresolved Duplicate Okta Primary Email entries, grouped by primary email
+  const dupGroups = new Map();
+  S.results.needsReview.forEach(entry => {
+    if (entry.reviewReason !== 'Duplicate Okta Primary Email') return;
+    if (entry._resolution) return;  // already resolved
+    const cand = entry.candidates && entry.candidates[0];
+    const key  = cand ? cand.primaryEmail : '_unknown';
+    if (!dupGroups.has(key)) dupGroups.set(key, { oktaUser: cand, entries: [] });
+    dupGroups.get(key).entries.push(entry);
+  });
+
+  if (dupGroups.size === 0) {
+    alert('No unresolved duplicate accounts to report — all have been resolved in the review panel.');
+    return;
+  }
+
+  const subject = `[Action Required] Duplicate Okta Accounts – ${customer} ${env} Migration`;
+
+  let caseList = '';
+  let n = 1;
+  for (const [, { oktaUser, entries }] of dupGroups) {
+    const oktaName = oktaUser
+      ? [oktaUser.firstName, oktaUser.lastName].filter(Boolean).join(' ')
+      : '';
+    const emailStr = (oktaUser && oktaUser.primaryEmail) || '—';
+    const nameStr  = oktaName ? ` (${oktaName})` : '';
+    caseList += `${n}. Okta Account: ${emailStr}${nameStr}\n`;
+    entries.forEach(entry => {
+      const userName  = entry.op.userName  || '';
+      const opEmail   = entry.op.email     || '';
+      caseList += `   ▸ ${userName}    ${opEmail}\n`;
+    });
+    caseList += '\n';
+    n++;
+  }
+
+  const body =
+`Hi,
+As part of our migration to Okta login for Neosphere, we have identified duplicate user accounts in the ${customer} ${env} environment that require your review.
+For each case below, please confirm which operator account should be considered the primary user, so we can grant Okta access to the correct account.
+──────────────────────────────────────────
+DUPLICATE ACCOUNTS REQUIRING REVIEW
+──────────────────────────────────────────
+${caseList}──────────────────────────────────────────
+Please reply confirming which account is the correct one for each case, or reach out if you have any questions.
+
+Thank you,
+[Your Name]`;
+
+  const mailto = 'mailto:?subject=' + encodeURIComponent(subject) +
+                 '&body='    + encodeURIComponent(body);
+  window.location.href = mailto;
 }
 
 /* ---- GROUP card: one Okta account → pick which operator ---- */
