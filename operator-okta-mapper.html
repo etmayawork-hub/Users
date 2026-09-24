@@ -591,6 +591,62 @@ body {
 .rc.rc-resolved .rc-confirmed-label { display: inline; }
 .rc.rc-resolved .rc-confirm { display: none; }
 
+/* Group card: Okta account shown as the subject */
+.rc-subject {
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 14px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.rc-subject-icon {
+  font-size: 28px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.rc-subject-detail { display: flex; flex-direction: column; gap: 2px; }
+
+.rc-subject-badge {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .6px;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+  margin-bottom: 1px;
+}
+
+.rc-subject-name { font-weight: 700; font-size: 15px; color: var(--text); }
+
+.rc-subject-email {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.rc-subject-local {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--text-subtle);
+}
+
+.rc-q {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  margin-bottom: 8px;
+}
+
+/* Operator option inside a group card */
+.op-name-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.op-username { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; color: var(--accent); }
+.op-fullname { font-weight: 600; font-size: 13px; color: var(--text); }
+.op-email    { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); }
+
 /* ===== LOG ===== */
 .log-wrap { display: none; }
 
@@ -1140,6 +1196,182 @@ function reasonClass(reason) {
   return 'name';
 }
 
+/* ---- helpers ---- */
+function makeRadioOption(name, value, id, bodyFn, extraClass) {
+  const lbl = el('label', 'rc-option' + (extraClass ? ' ' + extraClass : ''));
+  lbl.htmlFor = id;
+  const radio = document.createElement('input');
+  radio.type = 'radio'; radio.name = name; radio.value = value; radio.id = id;
+  lbl.appendChild(radio);
+  bodyFn(lbl);
+  return { lbl, radio };
+}
+
+function addNoMatchOption(candWrap, radioName, cardIdx, btnId) {
+  const { lbl, radio } = makeRadioOption(radioName, 'nomatch', `${cardIdx}-nm`, lbl => {
+    const info = el('div', 'cand-info');
+    info.appendChild(el('span', 'cand-name', 'None of them'));
+    info.appendChild(el('span', 'cand-email', 'Mark operator as unresolvable'));
+    lbl.appendChild(info);
+  }, 'nomatch-opt');
+  radio.addEventListener('change', () => {
+    candWrap.querySelectorAll('.rc-option').forEach(o => o.classList.remove('selected'));
+    lbl.classList.add('selected');
+    $(btnId).disabled = false;
+  });
+  candWrap.appendChild(lbl);
+}
+
+function addConfirmFooter(body, btnId, onConfirm) {
+  const btn = el('button', 'rc-confirm', 'Confirm selection');
+  btn.id = btnId; btn.disabled = true;
+  btn.addEventListener('click', onConfirm);
+  body.appendChild(btn);
+  body.appendChild(el('span', 'rc-confirmed-label', '✓ Resolved'));
+}
+
+/* ---- GROUP card: one Okta account → pick which operator ---- */
+function renderGroupCard(oktaUser, entries, groupKey, container) {
+  const oktaName = ((oktaUser.firstName || '') + ' ' + (oktaUser.lastName || '')).trim();
+  const cardId   = 'rcg-' + groupKey;
+  const btnId    = 'rcgbtn-' + groupKey;
+  const radioName = 'rcg-' + groupKey;
+
+  const card = el('div', 'rc');
+  card.id = cardId;
+
+  // Reason badge in a small head row
+  const head = el('div', 'rc-head');
+  head.appendChild(el('span', '', ''));   // spacer
+  head.appendChild(el('span', 'rc-reason dup', 'Duplicate Okta Primary Email'));
+  card.appendChild(head);
+
+  // Okta account subject block
+  const subj = el('div', 'rc-subject');
+  subj.appendChild(el('span', 'rc-subject-icon', '🔐'));
+  const subjDetail = el('div', 'rc-subject-detail');
+  subjDetail.appendChild(el('span', 'rc-subject-badge', 'Okta Account'));
+  subjDetail.appendChild(el('span', 'rc-subject-name', oktaName || '(unnamed)'));
+  subjDetail.appendChild(el('span', 'rc-subject-email', oktaUser.primaryEmail || '—'));
+  if (oktaUser.localUsername && oktaUser.localUsername !== oktaUser.primaryEmail)
+    subjDetail.appendChild(el('span', 'rc-subject-local', 'local: ' + oktaUser.localUsername));
+  subj.appendChild(subjDetail);
+  card.appendChild(subj);
+
+  // Body: operator options
+  const body = el('div', 'rc-body');
+  body.appendChild(el('div', 'rc-q', 'Which operator does this account belong to?'));
+
+  const candWrap = el('div', 'rc-candidates');
+
+  entries.forEach(({ entry }, ci) => {
+    const { lbl, radio } = makeRadioOption(radioName, ci, `${groupKey}-${ci}`, lbl => {
+      const row = el('div', 'op-name-row');
+      row.appendChild(el('span', 'op-username', entry.op.userName));
+      if (entry.op.fullName) row.appendChild(el('span', 'op-fullname', entry.op.fullName));
+      lbl.appendChild(row);
+      if (entry.op.email) lbl.appendChild(el('span', 'op-email', entry.op.email));
+    });
+    radio.addEventListener('change', () => {
+      candWrap.querySelectorAll('.rc-option').forEach(o => o.classList.remove('selected'));
+      lbl.classList.add('selected');
+      $(btnId).disabled = false;
+    });
+    candWrap.appendChild(lbl);
+  });
+
+  addNoMatchOption(candWrap, radioName, groupKey, btnId);
+  body.appendChild(candWrap);
+  addConfirmFooter(body, btnId, () => confirmGroup(groupKey, entries, oktaUser));
+  card.appendChild(body);
+  container.appendChild(card);
+}
+
+function confirmGroup(groupKey, entries, oktaUser) {
+  const radios = document.querySelectorAll(`input[name="rcg-${groupKey}"]`);
+  let chosen = null;
+  for (const r of radios) { if (r.checked) { chosen = r.value; break; } }
+  if (chosen === null) return;
+
+  entries.forEach(({ entry }, ci) => {
+    if (chosen === 'nomatch' || +chosen !== ci) {
+      entry._resolution = { type: 'nomatch' };
+    } else {
+      entry._resolution = { type: 'match', oktaUser };
+    }
+  });
+
+  $('rcg-' + groupKey).classList.add('rc-resolved');
+  updateReviewBadge(S.results.needsReview);
+}
+
+/* ---- INDIVIDUAL card: one operator → pick which Okta candidate ---- */
+function renderIndividualCard(entry, idx, container) {
+  const cardId = 'rc-' + idx;
+  const btnId  = 'rcbtn-' + idx;
+  const radioName = 'rc-' + idx;
+
+  const card = el('div', 'rc');
+  card.id = cardId;
+
+  const head = el('div', 'rc-head');
+  const opDiv = el('div', 'rc-op');
+  opDiv.appendChild(el('span', 'rc-username', entry.op.userName));
+  opDiv.appendChild(el('span', 'rc-fullname', entry.op.fullName || '(no name)'));
+  if (entry.op.email) opDiv.appendChild(el('span', 'rc-email', entry.op.email));
+  head.appendChild(opDiv);
+  head.appendChild(el('span', 'rc-reason ' + reasonClass(entry.reviewReason),
+                      entry.reviewReason || 'Review Required'));
+  card.appendChild(head);
+
+  const body = el('div', 'rc-body');
+  const candWrap = el('div', 'rc-candidates');
+  const candidates = entry.candidates || (entry.oktaUser ? [entry.oktaUser] : []);
+
+  candidates.forEach((cand, ci) => {
+    const name = ((cand.firstName || '') + ' ' + (cand.lastName || '')).trim();
+    const { lbl, radio } = makeRadioOption(radioName, ci, `rc${idx}-${ci}`, lbl => {
+      const info = el('div', 'cand-info');
+      info.appendChild(el('span', 'cand-name', name || '(unnamed)'));
+      info.appendChild(el('span', 'cand-email', cand.primaryEmail || '—'));
+      if (cand.localUsername && cand.localUsername !== cand.primaryEmail)
+        info.appendChild(el('span', 'cand-local', 'local: ' + cand.localUsername));
+      lbl.appendChild(info);
+    });
+    radio.addEventListener('change', () => {
+      candWrap.querySelectorAll('.rc-option').forEach(o => o.classList.remove('selected'));
+      lbl.classList.add('selected');
+      $(btnId).disabled = false;
+    });
+    candWrap.appendChild(lbl);
+  });
+
+  addNoMatchOption(candWrap, radioName, 'rc' + idx, btnId);
+  body.appendChild(candWrap);
+  addConfirmFooter(body, btnId, () => confirmIndividual(idx));
+  card.appendChild(body);
+  container.appendChild(card);
+}
+
+function confirmIndividual(idx) {
+  const entry  = S.results.needsReview[idx];
+  const radios = document.querySelectorAll(`input[name="rc-${idx}"]`);
+  let chosen = null;
+  for (const r of radios) { if (r.checked) { chosen = r.value; break; } }
+  if (chosen === null) return;
+
+  if (chosen === 'nomatch') {
+    entry._resolution = { type: 'nomatch' };
+  } else {
+    const candidates = entry.candidates || (entry.oktaUser ? [entry.oktaUser] : []);
+    entry._resolution = { type: 'match', oktaUser: candidates[+chosen] };
+  }
+
+  $('rc-' + idx).classList.add('rc-resolved');
+  updateReviewBadge(S.results.needsReview);
+}
+
+/* ---- main render ---- */
 function renderReviewUI(needsReview) {
   const list = $('review-list');
   list.innerHTML = '';
@@ -1150,109 +1382,32 @@ function renderReviewUI(needsReview) {
   }
 
   $('review-wrap').style.display = 'block';
-  updateReviewBadge(needsReview);
+
+  // Group "Duplicate Okta Primary Email" entries by primary email
+  const dupGroups = new Map();   // primaryEmail → { oktaUser, entries: [{entry, idx}] }
+  const others    = [];
 
   needsReview.forEach((entry, idx) => {
-    const card = el('div', 'rc');
-    card.id = 'rc-' + idx;
-
-    // ---- header ----
-    const head = el('div', 'rc-head');
-    const opDiv = el('div', 'rc-op');
-    opDiv.appendChild(el('span', 'rc-username', entry.op.userName));
-    opDiv.appendChild(el('span', 'rc-fullname', entry.op.fullName || '(no name)'));
-    if (entry.op.email) opDiv.appendChild(el('span', 'rc-email', entry.op.email));
-    head.appendChild(opDiv);
-
-    const reasonEl = el('span', 'rc-reason ' + reasonClass(entry.reviewReason),
-                        entry.reviewReason || 'Review Required');
-    head.appendChild(reasonEl);
-    card.appendChild(head);
-
-    // ---- body ----
-    const body = el('div', 'rc-body');
-    const candWrap = el('div', 'rc-candidates');
-
-    const candidates = entry.candidates || (entry.oktaUser ? [entry.oktaUser] : []);
-
-    candidates.forEach((cand, ci) => {
-      const name = ((cand.firstName || '') + ' ' + (cand.lastName || '')).trim();
-      const lbl = el('label', 'rc-option');
-      lbl.htmlFor = `rc${idx}-${ci}`;
-
-      const radio = document.createElement('input');
-      radio.type = 'radio';
-      radio.name = 'rc-' + idx;
-      radio.value = ci;
-      radio.id = `rc${idx}-${ci}`;
-      radio.addEventListener('change', () => {
-        candWrap.querySelectorAll('.rc-option').forEach(o => o.classList.remove('selected'));
-        lbl.classList.add('selected');
-        $('rcbtn-' + idx).disabled = false;
-      });
-
-      const info = el('div', 'cand-info');
-      info.appendChild(el('span', 'cand-name', name || '(unnamed)'));
-      info.appendChild(el('span', 'cand-email', cand.primaryEmail || '—'));
-      if (cand.localUsername && cand.localUsername !== cand.primaryEmail)
-        info.appendChild(el('span', 'cand-local', 'local: ' + cand.localUsername));
-
-      lbl.appendChild(radio); lbl.appendChild(info);
-      candWrap.appendChild(lbl);
-    });
-
-    // No-match option
-    const nmLbl = el('label', 'rc-option nomatch-opt');
-    nmLbl.htmlFor = `rc${idx}-nm`;
-    const nmRadio = document.createElement('input');
-    nmRadio.type = 'radio'; nmRadio.name = 'rc-' + idx;
-    nmRadio.value = 'nomatch'; nmRadio.id = `rc${idx}-nm`;
-    nmRadio.addEventListener('change', () => {
-      candWrap.querySelectorAll('.rc-option').forEach(o => o.classList.remove('selected'));
-      nmLbl.classList.add('selected');
-      $('rcbtn-' + idx).disabled = false;
-    });
-    const nmInfo = el('div', 'cand-info');
-    nmInfo.appendChild(el('span', 'cand-name', 'No Match'));
-    nmInfo.appendChild(el('span', 'cand-email', 'Mark as unresolvable'));
-    nmLbl.appendChild(nmRadio); nmLbl.appendChild(nmInfo);
-    candWrap.appendChild(nmLbl);
-
-    body.appendChild(candWrap);
-
-    // Confirm button
-    const confirmBtn = el('button', 'rc-confirm', 'Confirm selection');
-    confirmBtn.id = 'rcbtn-' + idx;
-    confirmBtn.disabled = true;
-    confirmBtn.addEventListener('click', () => confirmEntry(idx));
-    body.appendChild(confirmBtn);
-
-    const doneLabel = el('span', 'rc-confirmed-label', '✓ Resolved');
-    body.appendChild(doneLabel);
-
-    card.appendChild(body);
-    list.appendChild(card);
+    if (entry.reviewReason === 'Duplicate Okta Primary Email') {
+      const cand = entry.candidates && entry.candidates[0];
+      const key  = cand ? cand.primaryEmail : '_unknown';
+      if (!dupGroups.has(key)) dupGroups.set(key, { oktaUser: cand, entries: [] });
+      dupGroups.get(key).entries.push({ entry, idx });
+    } else {
+      others.push({ entry, idx });
+    }
   });
-}
 
-function confirmEntry(idx) {
-  const entry  = S.results.needsReview[idx];
-  const radios = document.querySelectorAll(`input[name="rc-${idx}"]`);
-  let chosen = null;
-  for (const r of radios) { if (r.checked) { chosen = r.value; break; } }
-  if (chosen === null) return;
+  // Render duplicate groups first (each group is one card)
+  let groupCounter = 0;
+  dupGroups.forEach(({ oktaUser, entries }) => {
+    renderGroupCard(oktaUser, entries, 'g' + groupCounter++, list);
+  });
 
-  const card = $('rc-' + idx);
-  card.classList.add('rc-resolved');
+  // Render individual cards
+  others.forEach(({ entry, idx }) => renderIndividualCard(entry, idx, list));
 
-  if (chosen === 'nomatch') {
-    entry._resolution = { type: 'nomatch' };
-  } else {
-    const candidates = entry.candidates || (entry.oktaUser ? [entry.oktaUser] : []);
-    entry._resolution = { type: 'match', oktaUser: candidates[+chosen] };
-  }
-
-  updateReviewBadge(S.results.needsReview);
+  updateReviewBadge(needsReview);
 }
 
 function updateReviewBadge(needsReview) {
