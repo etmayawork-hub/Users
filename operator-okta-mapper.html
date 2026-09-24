@@ -1,0 +1,1187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Operator Okta Mapper</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* ===== DESIGN TOKENS ===== */
+:root {
+  --bg:            #f0f3f7;
+  --surface:       #ffffff;
+  --surface2:      #f6f8fa;
+  --border:        #d0d7de;
+  --border-strong: #8c959f;
+  --text:          #1c2128;
+  --text-muted:    #57606a;
+  --text-subtle:   #8c959f;
+  --accent:        #6d28d9;
+  --accent-dim:    #7c3aed;
+  --accent-bg:     #ede9fe;
+  --success:       #1a7f37;
+  --success-bg:    #dcfce7;
+  --warning:       #9a6700;
+  --warning-bg:    #fef9c3;
+  --danger:        #cf222e;
+  --danger-bg:     #ffd7d5;
+  --info:          #0550ae;
+  --info-bg:       #ddf4ff;
+  --shadow:        0 1px 3px rgba(31,35,40,.12), 0 1px 2px rgba(31,35,40,.07);
+  --shadow-md:     0 4px 8px rgba(31,35,40,.12);
+  --radius:        14px;
+  --radius-sm:     10px;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:            #0d1117;
+    --surface:       #161b22;
+    --surface2:      #21262d;
+    --border:        #30363d;
+    --border-strong: #6e7681;
+    --text:          #e6edf3;
+    --text-muted:    #8b949e;
+    --text-subtle:   #6e7681;
+    --accent:        #a78bfa;
+    --accent-dim:    #c4b5fd;
+    --accent-bg:     #1e1447;
+    --success:       #3fb950;
+    --success-bg:    #0d2119;
+    --warning:       #d29922;
+    --warning-bg:    #2d1c00;
+    --danger:        #f85149;
+    --danger-bg:     #2d1318;
+    --info:          #58a6ff;
+    --info-bg:       #051d4d;
+    --shadow:        0 1px 3px rgba(0,0,0,.4);
+    --shadow-md:     0 4px 8px rgba(0,0,0,.5);
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg:            #0d1117;
+  --surface:       #161b22;
+  --surface2:      #21262d;
+  --border:        #30363d;
+  --border-strong: #6e7681;
+  --text:          #e6edf3;
+  --text-muted:    #8b949e;
+  --text-subtle:   #6e7681;
+  --accent:        #a78bfa;
+  --accent-dim:    #c4b5fd;
+  --accent-bg:     #1e1447;
+  --success:       #3fb950;
+  --success-bg:    #0d2119;
+  --warning:       #d29922;
+  --warning-bg:    #2d1c00;
+  --danger:        #f85149;
+  --danger-bg:     #2d1318;
+  --info:          #58a6ff;
+  --info-bg:       #051d4d;
+  --shadow:        0 1px 3px rgba(0,0,0,.4);
+  --shadow-md:     0 4px 8px rgba(0,0,0,.5);
+  color-scheme: dark;
+}
+
+/* ===== RESET & BASE ===== */
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  padding-inline: 16px;
+  padding-block: 24px 64px;
+}
+
+/* ===== LAYOUT ===== */
+.wrap {
+  max-width: 980px;
+  margin-inline: auto;
+}
+
+/* ===== HEADER ===== */
+.app-header {
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.header-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+  padding: 4px 12px;
+  border-radius: 999px;
+  margin-bottom: 12px;
+}
+
+.app-header h1 {
+  font-size: clamp(22px, 4vw, 32px);
+  font-weight: 800;
+  letter-spacing: -.6px;
+  margin: 0 0 8px;
+  color: var(--text);
+  text-wrap: balance;
+}
+
+.app-header h1 span {
+  background: linear-gradient(135deg, var(--accent), #ec4899);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.app-header p {
+  color: var(--text-muted);
+  font-size: 14px;
+  margin: 0;
+}
+
+/* ===== UPLOAD GRID ===== */
+.upload-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 580px) { .upload-grid { grid-template-columns: 1fr; } }
+
+.upload-card {
+  background: var(--surface);
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 28px 20px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .2s, background .2s, transform .15s;
+  position: relative;
+  user-select: none;
+}
+
+.upload-card:hover {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  transform: translateY(-1px);
+}
+
+.upload-card.drag-over {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  transform: translateY(-2px);
+}
+
+.upload-card.ready {
+  border-color: var(--success);
+  border-style: solid;
+}
+
+.upload-card.error-state {
+  border-color: var(--danger);
+  border-style: solid;
+}
+
+.upload-card input[type="file"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 100%;
+  height: 100%;
+}
+
+.uc-icon {
+  font-size: 36px;
+  margin-bottom: 10px;
+  display: block;
+  line-height: 1;
+}
+
+.uc-title {
+  font-weight: 700;
+  font-size: 15px;
+  margin-bottom: 4px;
+  color: var(--text);
+}
+
+.uc-hint {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.uc-status {
+  margin-top: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  display: none;
+}
+
+.uc-status.ok  { color: var(--success); display: block; }
+.uc-status.err { color: var(--danger);  display: block; }
+
+/* ===== SETTINGS PANEL ===== */
+.settings-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 32px;
+  align-items: center;
+}
+
+.setting-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.setting-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.setting-item input[type="range"] {
+  accent-color: var(--accent);
+  width: 120px;
+}
+
+.setting-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 600;
+  font-size: 12px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  padding: 2px 10px;
+  border-radius: 999px;
+  min-width: 52px;
+  text-align: center;
+}
+
+/* ===== BUTTONS ===== */
+.btn-row {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.btn {
+  padding: 10px 28px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  transition: opacity .15s, transform .1s, box-shadow .15s;
+  letter-spacing: -.1px;
+}
+
+.btn:active:not(:disabled) { transform: scale(.98); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 0 0 0 var(--accent);
+}
+
+.btn-primary:hover:not(:disabled) {
+  opacity: .9;
+  box-shadow: 0 4px 14px rgba(109,40,217,.35);
+}
+
+.btn-success {
+  background: var(--success);
+  color: #fff;
+}
+
+.btn-success:hover:not(:disabled) { opacity: .85; }
+
+/* ===== PROGRESS ===== */
+.progress-wrap {
+  margin-bottom: 18px;
+  display: none;
+}
+
+.progress-track {
+  height: 5px;
+  background: var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 7px;
+}
+
+.progress-bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--accent), #ec4899);
+  border-radius: 999px;
+  transition: width .3s ease;
+}
+
+.progress-label {
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+/* ===== SUMMARY ===== */
+.summary-wrap { display: none; }
+
+.section-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .7px;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+  margin: 0 0 10px;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  text-align: center;
+}
+
+.stat-val {
+  font-size: 30px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  margin-bottom: 3px;
+}
+
+.stat-lbl {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .4px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.stat-card.c-success .stat-val { color: var(--success); }
+.stat-card.c-warning .stat-val { color: var(--warning); }
+.stat-card.c-danger  .stat-val { color: var(--danger);  }
+.stat-card.c-info    .stat-val { color: var(--info);    }
+.stat-card.c-accent  .stat-val { color: var(--accent);  }
+
+.detail-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.detail-chip {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.dc-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.dc-val {
+  font-size: 20px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+/* ===== LOG ===== */
+.log-wrap { display: none; }
+
+.log-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  max-height: 180px;
+  overflow-y: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+}
+
+.log-entry {
+  padding: 2px 0;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+}
+
+.log-entry:last-child { border-bottom: none; }
+.log-entry.ok   { color: var(--success); }
+.log-entry.warn { color: var(--warning); }
+.log-entry.info { color: var(--info);    }
+.log-entry.err  { color: var(--danger);  }
+
+.log-ts { opacity: .6; flex-shrink: 0; }
+
+/* ===== DIVIDER ===== */
+hr { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="header-badge">&#10003; Aristocrat · Identity Mapping Tool</div>
+    <h1>Operator <span>Okta</span> Mapper</h1>
+    <p>Match operator accounts to Okta primary emails with multi-priority confidence scoring</p>
+  </header>
+
+  <!-- Upload row -->
+  <div class="upload-grid">
+    <div class="upload-card" id="ops-card">
+      <input type="file" id="ops-file" accept=".csv" title="Upload Operators CSV">
+      <span class="uc-icon">📋</span>
+      <div class="uc-title">Operators List</div>
+      <div class="uc-hint">CSV &bull; User Name &bull; Full Name &bull; Email &bull; Status &bull; Last Access</div>
+      <div class="uc-status" id="ops-status"></div>
+    </div>
+
+    <div class="upload-card" id="okta-card">
+      <input type="file" id="okta-file" accept=".xlsx,.xls" title="Upload Okta Users XLSX">
+      <span class="uc-icon">🔐</span>
+      <div class="uc-title">Okta Users</div>
+      <div class="uc-hint">XLSX &bull; First name &bull; Last name &bull; Primary email &bull; localUsername</div>
+      <div class="uc-status" id="okta-status"></div>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div class="settings-panel">
+    <div class="setting-item">
+      <span class="setting-label">Fuzzy Name Threshold</span>
+      <input type="range" id="fuzzy-range" min="60" max="100" value="90" step="1">
+      <span class="setting-badge"><span id="fuzzy-val">90</span>%</span>
+    </div>
+    <div class="setting-item">
+      <span class="setting-label">Auto-select Score Gap</span>
+      <input type="range" id="gap-range" min="5" max="50" value="20" step="5">
+      <span class="setting-badge"><span id="gap-val">20</span> pts</span>
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <div class="btn-row">
+    <button class="btn btn-primary" id="analyze-btn" disabled>&#9889; Analyze</button>
+    <button class="btn btn-success" id="download-btn" style="display:none">&#8595; Download Results (.xlsx)</button>
+  </div>
+
+  <!-- Progress -->
+  <div class="progress-wrap" id="progress-wrap">
+    <div class="progress-track"><div class="progress-bar" id="progress-bar"></div></div>
+    <div class="progress-label" id="progress-label">Processing…</div>
+  </div>
+
+  <!-- Summary -->
+  <div class="summary-wrap" id="summary-wrap">
+    <p class="section-label">Dashboard Summary</p>
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="stat-val" id="s-total">—</div>
+        <div class="stat-lbl">Operators Loaded</div>
+      </div>
+      <div class="stat-card c-info">
+        <div class="stat-val" id="s-filtered">—</div>
+        <div class="stat-lbl">After Filtering</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val" id="s-okta">—</div>
+        <div class="stat-lbl">Okta Users</div>
+      </div>
+      <div class="stat-card c-success">
+        <div class="stat-val" id="s-auto">—</div>
+        <div class="stat-lbl">Auto Matched</div>
+      </div>
+      <div class="stat-card c-warning">
+        <div class="stat-val" id="s-review">—</div>
+        <div class="stat-lbl">Review Required</div>
+      </div>
+      <div class="stat-card c-danger">
+        <div class="stat-val" id="s-nomatch">—</div>
+        <div class="stat-lbl">No Match Found</div>
+      </div>
+    </div>
+
+    <hr>
+    <p class="section-label">Match Type Breakdown</p>
+    <div class="detail-row">
+      <div class="detail-chip">
+        <span class="dc-label">Email Matches</span>
+        <span class="dc-val" id="d-email">—</span>
+      </div>
+      <div class="detail-chip">
+        <span class="dc-label">Local Username</span>
+        <span class="dc-val" id="d-local">—</span>
+      </div>
+      <div class="detail-chip">
+        <span class="dc-label">Exact Name</span>
+        <span class="dc-val" id="d-name">—</span>
+      </div>
+      <div class="detail-chip">
+        <span class="dc-label">Fuzzy Name</span>
+        <span class="dc-val" id="d-fuzzy">—</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Log -->
+  <div class="log-wrap" id="log-wrap">
+    <p class="section-label">Processing Log</p>
+    <div class="log-box" id="log-box"></div>
+  </div>
+
+</div><!-- /wrap -->
+
+<!-- Libraries -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+
+<script>
+/* ============================================================
+   APP STATE
+============================================================ */
+const S = {
+  opsRaw:    null,
+  oktaRaw:   null,
+  operators: [],
+  okta:      [],
+  results:   null,
+  fuzzy:     90,
+  gap:       20
+};
+
+/* ============================================================
+   DOM HELPERS
+============================================================ */
+const $  = id => document.getElementById(id);
+const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt !== undefined) e.textContent = txt; return e; };
+
+/* ============================================================
+   NORMALIZE
+   Lowercase, strip diacritics, remove spaces / dots / hyphens /
+   underscores / apostrophes / commas / parens / special chars.
+   Keeps @ for email comparisons.
+============================================================ */
+function norm(str) {
+  if (str == null) return '';
+  return String(str)
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[\s.\-_',()[\]{}|/\\]/g, '')
+    .replace(/[^a-z0-9@]/g, '');
+}
+
+/* ============================================================
+   DATE PARSING
+   Handles: Excel serial, ISO, DD/MM/YYYY, MM/DD/YYYY,
+            "Jan 15, 2023", "15 Jan 2023"
+============================================================ */
+function parseDate(val) {
+  if (val == null || val === '') return null;
+
+  // Excel date serial number
+  if (typeof val === 'number' && val > 1000 && val < 100000) {
+    const epoch = new Date(1899, 11, 30);
+    epoch.setDate(epoch.getDate() + Math.floor(val));
+    if (!isNaN(epoch)) return epoch;
+  }
+
+  const s = String(val).trim();
+  if (!s) return null;
+
+  // Already a JS Date?
+  if (val instanceof Date && !isNaN(val)) return val;
+
+  // ISO / RFC2822 / natural language
+  const d = new Date(s);
+  if (!isNaN(d)) return d;
+
+  // DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
+  const m1 = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+  if (m1) {
+    const candidates = [
+      new Date(+m1[3], +m1[2] - 1, +m1[1]),  // DD/MM/YYYY
+      new Date(+m1[3], +m1[1] - 1, +m1[2])   // MM/DD/YYYY
+    ];
+    const valid = candidates.filter(c => !isNaN(c));
+    if (valid.length) return valid[0];
+  }
+
+  // YYYY/MM/DD
+  const m2 = s.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})$/);
+  if (m2) {
+    const c = new Date(+m2[1], +m2[2] - 1, +m2[3]);
+    if (!isNaN(c)) return c;
+  }
+
+  return null;
+}
+
+/* ============================================================
+   LEVENSHTEIN (space-optimised)
+============================================================ */
+function lev(a, b) {
+  if (!a) return b ? b.length : 0;
+  if (!b) return a.length;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  let curr = new Array(b.length + 1);
+  for (let i = 1; i <= a.length; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      curr[j] = a[i-1] === b[j-1]
+        ? prev[j-1]
+        : 1 + Math.min(prev[j], curr[j-1], prev[j-1]);
+    }
+    [prev, curr] = [curr, prev];
+  }
+  return prev[b.length];
+}
+
+function fuzzyScore(a, b) {
+  if (!a && !b) return 1;
+  if (!a || !b) return 0;
+  const maxL = Math.max(a.length, b.length);
+  return maxL ? (maxL - lev(a, b)) / maxL : 1;
+}
+
+/* ============================================================
+   COLUMN FINDER (case + whitespace insensitive)
+============================================================ */
+function findCol(headers, ...candidates) {
+  const normed = headers.map(h => String(h || '').toLowerCase().replace(/[\s_\-]/g, ''));
+  for (const c of candidates) {
+    const n = c.toLowerCase().replace(/[\s_\-]/g, '');
+    const i = normed.indexOf(n);
+    if (i !== -1) return headers[i];
+  }
+  return null;
+}
+
+/* ============================================================
+   PARSE OPERATORS CSV
+============================================================ */
+function parseOpsCSV(text) {
+  const r = Papa.parse(text, {
+    header: true,
+    skipEmptyLines: true,
+    transformHeader: h => h.trim()
+  });
+
+  if (!r.data.length) throw new Error('No data rows found in CSV');
+
+  const H = r.meta.fields || [];
+  const cUser   = findCol(H, 'User Name', 'UserName', 'Username', 'Login', 'user_name', 'user');
+  const cFull   = findCol(H, 'Full Name', 'FullName', 'Name', 'Display Name', 'DisplayName');
+  const cEmail  = findCol(H, 'Email', 'Email Address', 'EmailAddress', 'mail', 'e-mail');
+  const cStatus = findCol(H, 'Status', 'State', 'Active');
+  const cLast   = findCol(H, 'Last Access', 'LastAccess', 'Last Login', 'LastLogin',
+                            'Last Seen', 'LastSeen', 'last_access', 'last_login');
+
+  const warn = [];
+  if (!cUser)   warn.push('User Name');
+  if (!cFull)   warn.push('Full Name');
+  if (!cStatus) warn.push('Status');
+  if (!cLast)   warn.push('Last Access');
+  if (warn.length) log(`Operators: could not find columns: ${warn.join(', ')}`, 'warn');
+
+  return r.data.map((row, i) => ({
+    _row:       i + 2,
+    userName:   String(row[cUser]   || '').trim(),
+    fullName:   String(row[cFull]   || '').trim(),
+    email:      String(row[cEmail]  || '').trim(),
+    status:     String(row[cStatus] || '').trim(),
+    lastAccess: row[cLast] != null ? row[cLast] : ''
+  }));
+}
+
+/* ============================================================
+   PARSE OKTA XLSX
+============================================================ */
+function parseOktaXLSX(buf) {
+  const wb   = XLSX.read(new Uint8Array(buf), { type: 'array', cellDates: true });
+  const ws   = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true });
+
+  if (rows.length < 2) throw new Error('Okta XLSX appears empty');
+
+  const H = rows[0].map(h => String(h || '').trim());
+
+  const cFirst  = findCol(H, 'First name', 'FirstName', 'First', 'GivenName');
+  const cLast   = findCol(H, 'Last name',  'LastName',  'Last',  'SurName', 'FamilyName');
+  const cEmail  = findCol(H, 'Primary email', 'PrimaryEmail', 'Email', 'EmailAddress');
+  const cLocal  = findCol(H, 'localUsername', 'local_username', 'LocalUsername',
+                             'Username', 'Login', 'SamAccountName');
+
+  const warn = [];
+  if (!cFirst) warn.push('First name');
+  if (!cLast)  warn.push('Last name');
+  if (!cEmail) warn.push('Primary email');
+  if (!cLocal) warn.push('localUsername');
+  if (warn.length) log(`Okta: could not find columns: ${warn.join(', ')}`, 'warn');
+
+  const idxOf = name => name ? H.indexOf(name) : -1;
+  const iF = idxOf(cFirst), iL = idxOf(cLast),
+        iE = idxOf(cEmail), iLU = idxOf(cLocal);
+
+  return rows.slice(1)
+    .filter(row => row.some(v => v != null && v !== ''))
+    .map((row, i) => ({
+      _row:         i + 2,
+      firstName:    iF  >= 0 ? String(row[iF]  || '').trim() : '',
+      lastName:     iL  >= 0 ? String(row[iL]  || '').trim() : '',
+      primaryEmail: iE  >= 0 ? String(row[iE]  || '').trim() : '',
+      localUsername: iLU >= 0 ? String(row[iLU] || '').trim() : ''
+    }))
+    .filter(u => u.primaryEmail || u.firstName || u.lastName);
+}
+
+/* ============================================================
+   FILTER OPERATORS
+   Keep: Status = "Enabled" AND Last Access within 2 years
+============================================================ */
+const TWO_YRS = 2 * 365.25 * 24 * 3600 * 1000;
+
+function filterOps(ops) {
+  const now = Date.now();
+  const kept = [], dropped = [];
+  for (const op of ops) {
+    if (op.status.toLowerCase() !== 'enabled') { dropped.push(op); continue; }
+    const dt = parseDate(op.lastAccess);
+    if (!dt || now - dt.getTime() > TWO_YRS) { dropped.push(op); continue; }
+    kept.push(op);
+  }
+  return { kept, dropped };
+}
+
+/* ============================================================
+   BUILD OKTA INDEX  (O(1) email lookups)
+============================================================ */
+function buildIndex(okta) {
+  const byPE = new Map(), byLU = new Map();
+  for (const u of okta) {
+    const pe = norm(u.primaryEmail);
+    if (pe) { if (!byPE.has(pe)) byPE.set(pe, []); byPE.get(pe).push(u); }
+    const lu = norm(u.localUsername);
+    if (lu) { if (!byLU.has(lu)) byLU.set(lu, []); byLU.get(lu).push(u); }
+  }
+  return { byPE, byLU };
+}
+
+/* ============================================================
+   MATCH ONE OPERATOR
+============================================================ */
+function matchOne(op, okta, idx, fuzzyThr, gapThr) {
+  const opEmail = norm(op.email);
+  const opFull  = norm(op.fullName);
+
+  // Split full name for bonus scoring
+  const parts = op.fullName.trim().split(/\s+/).filter(Boolean);
+  const opFirst = parts.length ? norm(parts[0]) : '';
+  const opLast  = parts.length > 1 ? norm(parts[parts.length - 1]) : '';
+
+  /* ---- Priority 1 : Primary email match ---- */
+  if (opEmail) {
+    const em = idx.byPE.get(opEmail) || [];
+    if (em.length === 1) return { status: 'auto',   matchType: 'Exact Email',   matchScore: 100, oktaUser: em[0], candidates: [], reviewReason: null };
+    if (em.length > 1)  return { status: 'review', matchType: 'Exact Email',   matchScore: 100, oktaUser: null,  candidates: em,  reviewReason: 'Multiple Email Matches' };
+
+    /* ---- Priority 2 : localUsername match ---- */
+    const lm = idx.byLU.get(opEmail) || [];
+    if (lm.length === 1) return { status: 'auto',   matchType: 'Local Username', matchScore: 95, oktaUser: lm[0], candidates: [], reviewReason: null };
+    if (lm.length > 1)  return { status: 'review', matchType: 'Local Username', matchScore: 95, oktaUser: null,  candidates: lm,  reviewReason: 'Multiple Local Username Matches' };
+  }
+
+  if (!opFull) {
+    return { status: 'nomatch', noMatchReason: opEmail ? 'No Matching Email' : 'No Matching Name' };
+  }
+
+  /* ---- Priority 3 : Exact full name match ---- */
+  const exactMatches = okta.filter(u => norm(u.firstName + u.lastName) === opFull);
+  if (exactMatches.length === 1) return { status: 'auto',   matchType: 'Exact Name', matchScore: 90, oktaUser: exactMatches[0], candidates: [],          reviewReason: null };
+  if (exactMatches.length > 1)  return { status: 'review', matchType: 'Exact Name', matchScore: 90, oktaUser: null,            candidates: exactMatches, reviewReason: 'Multiple Name Matches' };
+
+  /* ---- Priority 4 : Fuzzy full name match ---- */
+  const thr = fuzzyThr / 100;
+  const fuzzy = [];
+
+  for (const u of okta) {
+    const oktaFull = norm(u.firstName + u.lastName);
+    if (!oktaFull) continue;
+
+    // Length ratio pre-filter (skip obvious non-matches)
+    const lr = Math.min(opFull.length, oktaFull.length) / Math.max(opFull.length, oktaFull.length);
+    if (lr < 0.45) continue;
+
+    const sim = fuzzyScore(opFull, oktaFull);
+    if (sim >= thr) fuzzy.push({ u, sim });
+  }
+
+  if (!fuzzy.length) {
+    return { status: 'nomatch', noMatchReason: opEmail ? 'No Matching Email' : 'No Matching Name' };
+  }
+
+  // Advanced composite scoring
+  const scored = fuzzy.map(({ u, sim }) => {
+    let cs = sim * 100;
+    if (opFirst && norm(u.firstName) === opFirst) cs += 30;
+    if (opLast  && norm(u.lastName)  === opLast)  cs += 30;
+    return { u, sim, cs };
+  }).sort((a, b) => b.cs - a.cs);
+
+  if (scored.length === 1) {
+    return { status: 'auto', matchType: 'Fuzzy Name', matchScore: Math.round(scored[0].sim * 100),
+             oktaUser: scored[0].u, candidates: [], reviewReason: null };
+  }
+
+  const top = scored[0], sec = scored[1];
+  if (top.cs - sec.cs >= gapThr) {
+    return { status: 'auto', matchType: 'Fuzzy Name', matchScore: Math.round(top.sim * 100),
+             oktaUser: top.u, candidates: [], reviewReason: null };
+  }
+
+  return {
+    status: 'review',
+    matchType: 'Fuzzy Name',
+    matchScore: Math.round(top.sim * 100),
+    oktaUser: null,
+    candidates: scored.slice(0, 5).map(s => s.u),
+    reviewReason: 'Similar Scores'
+  };
+}
+
+/* ============================================================
+   PROCESS ALL (chunked, async, non-blocking)
+============================================================ */
+async function processAll() {
+  const ops  = S.operators;
+  const okta = S.okta;
+  const idx  = buildIndex(okta);
+  const CHUNK = 40;
+
+  const autoMatched = [], needsReview = [], noMatch = [];
+  const stats = { email: 0, local: 0, exact: 0, fuzzy: 0 };
+
+  for (let i = 0; i < ops.length; i++) {
+    const res = matchOne(ops[i], okta, idx, S.fuzzy, S.gap);
+
+    if (res.status === 'auto') {
+      autoMatched.push({ op: ops[i], ...res });
+      if (res.matchType === 'Exact Email')    stats.email++;
+      else if (res.matchType === 'Local Username') stats.local++;
+      else if (res.matchType === 'Exact Name')     stats.exact++;
+      else if (res.matchType === 'Fuzzy Name')     stats.fuzzy++;
+    } else if (res.status === 'review') {
+      needsReview.push({ op: ops[i], ...res });
+    } else {
+      noMatch.push({ op: ops[i], ...res });
+    }
+
+    if ((i + 1) % CHUNK === 0 || i === ops.length - 1) {
+      const pct = 15 + Math.round((i + 1) / ops.length * 80);
+      setProgress(pct, `Matching ${i + 1} / ${ops.length} operators…`);
+      await new Promise(r => setTimeout(r, 0));
+    }
+  }
+
+  return { autoMatched, needsReview, noMatch, stats };
+}
+
+/* ============================================================
+   EXCEL EXPORT
+============================================================ */
+function colWidths(ws, data) {
+  if (!data.length) return;
+  const keys = Object.keys(data[0]);
+  const widths = keys.map(k => k.length);
+  data.forEach(row => Object.values(row).forEach((v, i) => {
+    widths[i] = Math.max(widths[i] || 0, String(v || '').length);
+  }));
+  ws['!cols'] = widths.map(w => ({ wch: Math.min(w + 2, 65) }));
+}
+
+function buildWorkbook(res) {
+  const wb = XLSX.utils.book_new();
+
+  // Sheet 1 – Auto Matched
+  const s1 = res.autoMatched.map(r => ({
+    'Operator Username':  r.op.userName,
+    'Operator Full Name': r.op.fullName,
+    'Operator Email':     r.op.email,
+    'Okta Primary Email': r.oktaUser ? r.oktaUser.primaryEmail : '',
+    'Okta First Name':    r.oktaUser ? r.oktaUser.firstName    : '',
+    'Okta Last Name':     r.oktaUser ? r.oktaUser.lastName     : '',
+    'Match Type':         r.matchType,
+    'Match Score':        r.matchScore
+  }));
+  const ws1 = XLSX.utils.json_to_sheet(s1.length ? s1 : [{ Note: 'No auto-matched operators' }]);
+  colWidths(ws1, s1);
+  XLSX.utils.book_append_sheet(wb, ws1, 'Auto Matched');
+
+  // Sheet 2 – Needs Review
+  const s2 = res.needsReview.map(r => ({
+    'Operator Username':  r.op.userName,
+    'Operator Full Name': r.op.fullName,
+    'Operator Email':     r.op.email,
+    'Candidate Count':    (r.candidates || []).length,
+    'Candidate Emails':   (r.candidates || []).map(c => c.primaryEmail).join(' | '),
+    'Candidate Names':    (r.candidates || []).map(c => (c.firstName + ' ' + c.lastName).trim()).join(' | '),
+    'Match Type':         r.matchType  || '',
+    'Match Score':        r.matchScore || '',
+    'Review Reason':      r.reviewReason || ''
+  }));
+  const ws2 = XLSX.utils.json_to_sheet(s2.length ? s2 : [{ Note: 'No operators need review' }]);
+  colWidths(ws2, s2);
+  XLSX.utils.book_append_sheet(wb, ws2, 'Needs Review');
+
+  // Sheet 3 – No Match Found
+  const s3 = res.noMatch.map(r => ({
+    'Operator Username':  r.op.userName,
+    'Operator Full Name': r.op.fullName,
+    'Operator Email':     r.op.email,
+    'Reason':             r.noMatchReason || 'No Match Found'
+  }));
+  const ws3 = XLSX.utils.json_to_sheet(s3.length ? s3 : [{ Note: 'All operators were matched' }]);
+  colWidths(ws3, s3);
+  XLSX.utils.book_append_sheet(wb, ws3, 'No Match Found');
+
+  return wb;
+}
+
+/* ============================================================
+   UI HELPERS
+============================================================ */
+function setProgress(pct, label) {
+  $('progress-bar').style.width = pct + '%';
+  $('progress-label').textContent = label || '';
+}
+
+function log(msg, type) {
+  const box  = $('log-box');
+  const wrap = $('log-wrap');
+  wrap.style.display = 'block';
+  const e = el('div', 'log-entry' + (type ? ' ' + type : ''));
+  const ts = el('span', 'log-ts', new Date().toLocaleTimeString());
+  const tx = el('span', '', msg);
+  e.appendChild(ts); e.appendChild(tx);
+  box.appendChild(e);
+  box.scrollTop = box.scrollHeight;
+}
+
+function updateSummary(totRaw, totFilt, totOkta, res) {
+  $('s-total').textContent    = totRaw;
+  $('s-filtered').textContent = totFilt;
+  $('s-okta').textContent     = totOkta;
+  $('s-auto').textContent     = res.autoMatched.length;
+  $('s-review').textContent   = res.needsReview.length;
+  $('s-nomatch').textContent  = res.noMatch.length;
+  $('d-email').textContent    = res.stats.email;
+  $('d-local').textContent    = res.stats.local;
+  $('d-name').textContent     = res.stats.exact;
+  $('d-fuzzy').textContent    = res.stats.fuzzy;
+  $('summary-wrap').style.display = 'block';
+}
+
+function checkReady() {
+  $('analyze-btn').disabled = !(S.opsRaw && S.oktaRaw);
+}
+
+/* ============================================================
+   UPLOAD HANDLERS
+============================================================ */
+function setupUpload(fileId, cardId, statusId, handler) {
+  const inp  = $(fileId);
+  const card = $(cardId);
+
+  inp.addEventListener('change', e => {
+    const f = e.target.files[0];
+    if (f) handler(f, statusId, cardId);
+  });
+
+  card.addEventListener('dragover',  e => { e.preventDefault(); card.classList.add('drag-over'); });
+  card.addEventListener('dragleave', ()  => card.classList.remove('drag-over'));
+  card.addEventListener('drop', e => {
+    e.preventDefault();
+    card.classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f) handler(f, statusId, cardId);
+  });
+}
+
+function setStatus(statusId, cardId, msg, ok) {
+  const s = $(statusId);
+  s.textContent = msg;
+  s.className = 'uc-status ' + (ok ? 'ok' : 'err');
+  const c = $(cardId);
+  c.classList.remove('ready', 'error-state');
+  c.classList.add(ok ? 'ready' : 'error-state');
+}
+
+function handleOpsFile(file, statusId, cardId) {
+  const r = new FileReader();
+  r.onload = e => {
+    try {
+      const data = parseOpsCSV(e.target.result);
+      S.opsRaw = data;
+      setStatus(statusId, cardId, `✓ ${data.length} rows loaded`, true);
+      log(`Operators CSV loaded: ${data.length} rows — "${file.name}"`, 'ok');
+      checkReady();
+    } catch (err) {
+      setStatus(statusId, cardId, '✗ ' + err.message, false);
+      log('Operators load error: ' + err.message, 'err');
+    }
+  };
+  r.readAsText(file);
+}
+
+function handleOktaFile(file, statusId, cardId) {
+  const r = new FileReader();
+  r.onload = e => {
+    try {
+      const data = parseOktaXLSX(e.target.result);
+      S.oktaRaw = data;
+      setStatus(statusId, cardId, `✓ ${data.length} users loaded`, true);
+      log(`Okta XLSX loaded: ${data.length} users — "${file.name}"`, 'ok');
+      checkReady();
+    } catch (err) {
+      setStatus(statusId, cardId, '✗ ' + err.message, false);
+      log('Okta load error: ' + err.message, 'err');
+    }
+  };
+  r.readAsArrayBuffer(file);
+}
+
+/* ============================================================
+   MAIN ANALYZE FLOW
+============================================================ */
+$('analyze-btn').addEventListener('click', async () => {
+  if (!S.opsRaw || !S.oktaRaw) return;
+
+  $('analyze-btn').disabled = true;
+  $('download-btn').style.display = 'none';
+  $('progress-wrap').style.display = 'block';
+  $('log-box').innerHTML = '';
+
+  log('Starting analysis…', 'info');
+  setProgress(5, 'Filtering operators…');
+  await new Promise(r => setTimeout(r, 10));
+
+  // Filter
+  const { kept, dropped } = filterOps(S.opsRaw);
+  S.operators = kept;
+  S.okta      = S.oktaRaw;
+
+  log(`Total operators: ${S.opsRaw.length}`, 'info');
+  log(`Kept after filtering (Enabled + last 2 years): ${kept.length}`, 'info');
+  log(`Filtered out: ${dropped.length} (disabled or stale)`, '');
+  log(`Okta users: ${S.okta.length}`, 'info');
+
+  setProgress(10, 'Building lookup index…');
+  await new Promise(r => setTimeout(r, 10));
+
+  log('Running matching engine…', 'info');
+
+  // Match
+  const results = await processAll();
+  S.results = results;
+
+  setProgress(100, 'Complete ✓');
+
+  log(`Auto matched:       ${results.autoMatched.length}`, 'ok');
+  log(`  Email matches:    ${results.stats.email}`, '');
+  log(`  Local username:   ${results.stats.local}`, '');
+  log(`  Exact name:       ${results.stats.exact}`, '');
+  log(`  Fuzzy name:       ${results.stats.fuzzy}`, '');
+  log(`Needs review:       ${results.needsReview.length}`, results.needsReview.length ? 'warn' : '');
+  log(`No match found:     ${results.noMatch.length}`, results.noMatch.length ? 'warn' : 'ok');
+  log('Ready to download.', 'ok');
+
+  updateSummary(S.opsRaw.length, kept.length, S.okta.length, results);
+
+  $('download-btn').style.display = 'inline-block';
+  $('analyze-btn').disabled = false;
+});
+
+/* ============================================================
+   SETTINGS
+============================================================ */
+$('fuzzy-range').addEventListener('input', e => {
+  S.fuzzy = +e.target.value;
+  $('fuzzy-val').textContent = e.target.value;
+});
+
+$('gap-range').addEventListener('input', e => {
+  S.gap = +e.target.value;
+  $('gap-val').textContent = e.target.value;
+});
+
+/* ============================================================
+   DOWNLOAD
+============================================================ */
+$('download-btn').addEventListener('click', () => {
+  if (!S.results) return;
+  try {
+    const wb = buildWorkbook(S.results);
+    XLSX.writeFile(wb, 'operator_okta_mapping.xlsx');
+    log('Exported: operator_okta_mapping.xlsx', 'ok');
+  } catch (err) {
+    log('Export error: ' + err.message, 'err');
+    alert('Export failed: ' + err.message + '\n\nNote: file downloads require running this page locally in a browser.');
+  }
+});
+
+/* ============================================================
+   INIT
+============================================================ */
+setupUpload('ops-file',  'ops-card',  'ops-status',  handleOpsFile);
+setupUpload('okta-file', 'okta-card', 'okta-status', handleOktaFile);
+</script>
+</body>
+</html>
