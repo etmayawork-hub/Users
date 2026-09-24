@@ -430,6 +430,167 @@ body {
   color: var(--text);
 }
 
+/* ===== REVIEW PANEL ===== */
+.review-wrap { display: none; }
+
+.review-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.review-progress-badge {
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.review-progress-badge.done {
+  background: var(--success-bg);
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.rc {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 10px;
+  overflow: hidden;
+  transition: border-color .2s;
+}
+
+.rc.rc-resolved { border-color: var(--success); opacity: .75; }
+
+.rc-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.rc-op { display: flex; flex-direction: column; gap: 2px; }
+
+.rc-username {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.rc-fullname { font-weight: 700; font-size: 14px; color: var(--text); }
+
+.rc-email {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.rc-reason {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.rc-reason.email   { background: var(--info-bg);    color: var(--info);    }
+.rc-reason.name    { background: var(--warning-bg);  color: var(--warning); }
+.rc-reason.fuzzy   { background: var(--accent-bg);   color: var(--accent);  }
+.rc-reason.dup     { background: var(--danger-bg);   color: var(--danger);  }
+
+.rc-body { padding: 10px 14px 12px; }
+
+.rc-candidates {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.rc-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+
+.rc-option:hover { border-color: var(--accent); background: var(--accent-bg); }
+
+.rc-option input[type="radio"] {
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.rc-option.selected {
+  border-color: var(--success);
+  background: var(--success-bg);
+}
+
+.rc-option.nomatch-opt { border-style: dashed; }
+.rc-option.nomatch-opt:hover { border-color: var(--danger); background: var(--danger-bg); }
+.rc-option.nomatch-opt.selected { border-color: var(--danger); background: var(--danger-bg); }
+
+.cand-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.cand-name { font-weight: 700; font-size: 13px; color: var(--text); }
+.cand-email { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); }
+.cand-local { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--text-subtle); }
+
+.rc-confirm {
+  padding: 6px 18px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  transition: opacity .15s;
+}
+
+.rc-confirm:disabled { opacity: .35; cursor: not-allowed; }
+.rc-confirm:hover:not(:disabled) { opacity: .85; }
+
+.rc-confirmed-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--success);
+  display: none;
+}
+
+.rc.rc-resolved .rc-confirmed-label { display: inline; }
+.rc.rc-resolved .rc-confirm { display: none; }
+
 /* ===== LOG ===== */
 .log-wrap { display: none; }
 
@@ -569,6 +730,15 @@ hr { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
         <span class="dc-val" id="d-fuzzy">—</span>
       </div>
     </div>
+  </div>
+
+  <!-- Needs Review Interactive Panel -->
+  <div class="review-wrap" id="review-wrap">
+    <div class="review-header">
+      <p class="section-label" style="margin:0">Needs Review</p>
+      <span class="review-progress-badge" id="review-badge">0 / 0 resolved</span>
+    </div>
+    <div id="review-list"></div>
   </div>
 
   <!-- Log -->
@@ -959,6 +1129,166 @@ async function processAll() {
 }
 
 /* ============================================================
+   REVIEW PANEL
+============================================================ */
+function reasonClass(reason) {
+  if (!reason) return 'name';
+  const r = reason.toLowerCase();
+  if (r.includes('email') && r.includes('dup')) return 'dup';
+  if (r.includes('email') || r.includes('username')) return 'email';
+  if (r.includes('fuzzy') || r.includes('score')) return 'fuzzy';
+  return 'name';
+}
+
+function renderReviewUI(needsReview) {
+  const list = $('review-list');
+  list.innerHTML = '';
+
+  if (!needsReview.length) {
+    $('review-wrap').style.display = 'none';
+    return;
+  }
+
+  $('review-wrap').style.display = 'block';
+  updateReviewBadge(needsReview);
+
+  needsReview.forEach((entry, idx) => {
+    const card = el('div', 'rc');
+    card.id = 'rc-' + idx;
+
+    // ---- header ----
+    const head = el('div', 'rc-head');
+    const opDiv = el('div', 'rc-op');
+    opDiv.appendChild(el('span', 'rc-username', entry.op.userName));
+    opDiv.appendChild(el('span', 'rc-fullname', entry.op.fullName || '(no name)'));
+    if (entry.op.email) opDiv.appendChild(el('span', 'rc-email', entry.op.email));
+    head.appendChild(opDiv);
+
+    const reasonEl = el('span', 'rc-reason ' + reasonClass(entry.reviewReason),
+                        entry.reviewReason || 'Review Required');
+    head.appendChild(reasonEl);
+    card.appendChild(head);
+
+    // ---- body ----
+    const body = el('div', 'rc-body');
+    const candWrap = el('div', 'rc-candidates');
+
+    const candidates = entry.candidates || (entry.oktaUser ? [entry.oktaUser] : []);
+
+    candidates.forEach((cand, ci) => {
+      const name = ((cand.firstName || '') + ' ' + (cand.lastName || '')).trim();
+      const lbl = el('label', 'rc-option');
+      lbl.htmlFor = `rc${idx}-${ci}`;
+
+      const radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.name = 'rc-' + idx;
+      radio.value = ci;
+      radio.id = `rc${idx}-${ci}`;
+      radio.addEventListener('change', () => {
+        candWrap.querySelectorAll('.rc-option').forEach(o => o.classList.remove('selected'));
+        lbl.classList.add('selected');
+        $('rcbtn-' + idx).disabled = false;
+      });
+
+      const info = el('div', 'cand-info');
+      info.appendChild(el('span', 'cand-name', name || '(unnamed)'));
+      info.appendChild(el('span', 'cand-email', cand.primaryEmail || '—'));
+      if (cand.localUsername && cand.localUsername !== cand.primaryEmail)
+        info.appendChild(el('span', 'cand-local', 'local: ' + cand.localUsername));
+
+      lbl.appendChild(radio); lbl.appendChild(info);
+      candWrap.appendChild(lbl);
+    });
+
+    // No-match option
+    const nmLbl = el('label', 'rc-option nomatch-opt');
+    nmLbl.htmlFor = `rc${idx}-nm`;
+    const nmRadio = document.createElement('input');
+    nmRadio.type = 'radio'; nmRadio.name = 'rc-' + idx;
+    nmRadio.value = 'nomatch'; nmRadio.id = `rc${idx}-nm`;
+    nmRadio.addEventListener('change', () => {
+      candWrap.querySelectorAll('.rc-option').forEach(o => o.classList.remove('selected'));
+      nmLbl.classList.add('selected');
+      $('rcbtn-' + idx).disabled = false;
+    });
+    const nmInfo = el('div', 'cand-info');
+    nmInfo.appendChild(el('span', 'cand-name', 'No Match'));
+    nmInfo.appendChild(el('span', 'cand-email', 'Mark as unresolvable'));
+    nmLbl.appendChild(nmRadio); nmLbl.appendChild(nmInfo);
+    candWrap.appendChild(nmLbl);
+
+    body.appendChild(candWrap);
+
+    // Confirm button
+    const confirmBtn = el('button', 'rc-confirm', 'Confirm selection');
+    confirmBtn.id = 'rcbtn-' + idx;
+    confirmBtn.disabled = true;
+    confirmBtn.addEventListener('click', () => confirmEntry(idx));
+    body.appendChild(confirmBtn);
+
+    const doneLabel = el('span', 'rc-confirmed-label', '✓ Resolved');
+    body.appendChild(doneLabel);
+
+    card.appendChild(body);
+    list.appendChild(card);
+  });
+}
+
+function confirmEntry(idx) {
+  const entry  = S.results.needsReview[idx];
+  const radios = document.querySelectorAll(`input[name="rc-${idx}"]`);
+  let chosen = null;
+  for (const r of radios) { if (r.checked) { chosen = r.value; break; } }
+  if (chosen === null) return;
+
+  const card = $('rc-' + idx);
+  card.classList.add('rc-resolved');
+
+  if (chosen === 'nomatch') {
+    entry._resolution = { type: 'nomatch' };
+  } else {
+    const candidates = entry.candidates || (entry.oktaUser ? [entry.oktaUser] : []);
+    entry._resolution = { type: 'match', oktaUser: candidates[+chosen] };
+  }
+
+  updateReviewBadge(S.results.needsReview);
+}
+
+function updateReviewBadge(needsReview) {
+  const resolved = needsReview.filter(e => e._resolution).length;
+  const total    = needsReview.length;
+  const badge    = $('review-badge');
+  badge.textContent = `${resolved} / ${total} resolved`;
+  badge.className = 'review-progress-badge' + (resolved === total ? ' done' : '');
+}
+
+/* Merge manual review decisions into the final result sets for export */
+function mergeResolutions(res) {
+  const autoMatched  = [...res.autoMatched];
+  const needsReview  = [];
+  const noMatch      = [...res.noMatch];
+
+  for (const entry of res.needsReview) {
+    if (!entry._resolution) {
+      needsReview.push(entry);           // still unresolved
+    } else if (entry._resolution.type === 'match') {
+      autoMatched.push({
+        ...entry,
+        oktaUser:   entry._resolution.oktaUser,
+        matchType:  'Manual Review',
+        matchScore: 100,
+        candidates: []
+      });
+    } else {
+      noMatch.push({ ...entry, noMatchReason: 'Manual Review – No Match' });
+    }
+  }
+
+  return { ...res, autoMatched, needsReview, noMatch };
+}
+
+/* ============================================================
    EXCEL EXPORT
 ============================================================ */
 function colWidths(ws, data) {
@@ -1132,6 +1462,8 @@ $('analyze-btn').addEventListener('click', async () => {
   $('download-btn').style.display = 'none';
   $('progress-wrap').style.display = 'block';
   $('log-box').innerHTML = '';
+  $('review-list').innerHTML = '';
+  $('review-wrap').style.display = 'none';
 
   log('Starting analysis…', 'info');
   setProgress(5, 'Filtering operators…');
@@ -1168,6 +1500,7 @@ $('analyze-btn').addEventListener('click', async () => {
   log('Ready to download.', 'ok');
 
   updateSummary(S.opsRaw.length, kept.length, S.okta.length, results);
+  renderReviewUI(results.needsReview);
 
   $('download-btn').style.display = 'inline-block';
   $('analyze-btn').disabled = false;
@@ -1192,7 +1525,7 @@ $('gap-range').addEventListener('input', e => {
 $('download-btn').addEventListener('click', () => {
   if (!S.results) return;
   try {
-    const wb = buildWorkbook(S.results);
+    const wb = buildWorkbook(mergeResolutions(S.results));
     XLSX.writeFile(wb, 'operator_okta_mapping.xlsx');
     log('Exported: operator_okta_mapping.xlsx', 'ok');
   } catch (err) {
