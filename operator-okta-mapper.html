@@ -931,7 +931,31 @@ async function processAll() {
     }
   }
 
-  return { autoMatched, needsReview, noMatch, stats };
+  /* ---- Post-process: flag duplicate Okta Primary Emails ---- */
+  // If two or more operators auto-matched to the same Okta primary email,
+  // move all of them to review — one person can't be two operators.
+  const emailCount = new Map();
+  for (const r of autoMatched) {
+    const pe = r.oktaUser ? r.oktaUser.primaryEmail : null;
+    if (pe) emailCount.set(pe, (emailCount.get(pe) || 0) + 1);
+  }
+
+  const dedupedAuto = [];
+  for (const r of autoMatched) {
+    const pe = r.oktaUser ? r.oktaUser.primaryEmail : null;
+    if (pe && emailCount.get(pe) > 1) {
+      needsReview.push({ ...r, oktaUser: null, candidates: [r.oktaUser], reviewReason: 'Duplicate Okta Primary Email' });
+      // Undo the match-type stat counter
+      if (r.matchType === 'Exact Email')    stats.email--;
+      else if (r.matchType === 'Local Username') stats.local--;
+      else if (r.matchType === 'Exact Name')     stats.exact--;
+      else if (r.matchType === 'Fuzzy Name')     stats.fuzzy--;
+    } else {
+      dedupedAuto.push(r);
+    }
+  }
+
+  return { autoMatched: dedupedAuto, needsReview, noMatch, stats };
 }
 
 /* ============================================================
