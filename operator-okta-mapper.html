@@ -647,6 +647,27 @@ body {
 .op-fullname { font-weight: 600; font-size: 13px; color: var(--text); }
 .op-email    { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); }
 
+/* Copy-message button */
+.copy-msg-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text-muted);
+  transition: border-color .15s, color .15s, background .15s;
+}
+
+.copy-msg-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-bg); }
+.copy-msg-btn.copied { border-color: var(--success); color: var(--success); background: var(--success-bg); }
+
 /* ===== LOG ===== */
 .log-wrap { display: none; }
 
@@ -721,6 +742,17 @@ hr { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
       <span class="setting-label">Auto-select Score Gap</span>
       <input type="range" id="gap-range" min="5" max="50" value="20" step="5">
       <span class="setting-badge"><span id="gap-val">20</span> pts</span>
+    </div>
+    <div style="width:100%; height:1px; background:var(--border);"></div>
+    <div class="setting-item">
+      <span class="setting-label">Customer</span>
+      <input type="text" id="msg-customer" placeholder="e.g. NHL" value=""
+        style="border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-family:inherit; font-size:13px; padding:5px 10px; width:130px; outline:none;">
+    </div>
+    <div class="setting-item">
+      <span class="setting-label">Environment</span>
+      <input type="text" id="msg-env" placeholder="e.g. UAT" value=""
+        style="border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-family:inherit; font-size:13px; padding:5px 10px; width:130px; outline:none;">
     </div>
   </div>
 
@@ -1237,6 +1269,54 @@ function addConfirmFooter(body, btnId, onConfirm) {
   body.appendChild(el('span', 'rc-confirmed-label', '✓ Resolved'));
 }
 
+/* ---- Copy duplicate-notification message to clipboard ---- */
+function copyDupMessage(oktaUser, entries, btnEl) {
+  const customer = ($('msg-customer').value || '').trim();
+  const env      = ($('msg-env').value || '').trim();
+  const location = [customer, env].filter(Boolean).join(' ');
+
+  const opLines = entries.map(({ entry: e }) =>
+    [e.op.userName, e.op.email].filter(Boolean).join('\n')
+  ).join('\n');
+
+  const msg =
+`Hi,
+As part of our migration to Okta login for Neosphere, we identified duplicate user accounts for ${oktaUser.primaryEmail || '—'} in ${location || '<Customer> <Environment>'} env:
+${opLines}
+Could you please confirm which account should be considered the primary user so we can grant Okta access to the correct account?
+Thanks.`;
+
+  const finish = (ok) => {
+    btnEl.textContent = ok ? '✓ Copied!' : '✗ Copy failed';
+    btnEl.classList.toggle('copied', ok);
+    setTimeout(() => {
+      btnEl.textContent = '⎘ Copy message';
+      btnEl.classList.remove('copied');
+    }, 2000);
+  };
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(msg).then(() => finish(true)).catch(() => {
+      fallbackCopy(msg) ? finish(true) : finish(false);
+    });
+  } else {
+    fallbackCopy(msg) ? finish(true) : finish(false);
+  }
+}
+
+function fallbackCopy(text) {
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch { return false; }
+}
+
 /* ---- GROUP card: one Okta account → pick which operator ---- */
 function renderGroupCard(oktaUser, entries, groupKey, container) {
   const oktaName = ((oktaUser.firstName || '') + ' ' + (oktaUser.lastName || '')).trim();
@@ -1289,7 +1369,16 @@ function renderGroupCard(oktaUser, entries, groupKey, container) {
 
   addNoMatchOption(candWrap, radioName, groupKey, btnId);
   body.appendChild(candWrap);
-  addConfirmFooter(body, btnId, () => confirmGroup(groupKey, entries, oktaUser));
+
+  // Footer row: confirm + copy message
+  const footer = el('div', '', '');
+  footer.style.cssText = 'display:flex; align-items:center; gap:10px; flex-wrap:wrap;';
+  addConfirmFooter(footer, btnId, () => confirmGroup(groupKey, entries, oktaUser));
+  const copyBtn = el('button', 'copy-msg-btn', '⎘ Copy message');
+  copyBtn.addEventListener('click', () => copyDupMessage(oktaUser, entries, copyBtn));
+  footer.appendChild(copyBtn);
+  body.appendChild(footer);
+
   card.appendChild(body);
   container.appendChild(card);
 }
