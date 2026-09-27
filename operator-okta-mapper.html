@@ -824,6 +824,10 @@ hr { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
         <span class="dc-label">Fuzzy Name</span>
         <span class="dc-val" id="d-fuzzy">—</span>
       </div>
+      <div class="detail-chip">
+        <span class="dc-label">Aristocrat Domain</span>
+        <span class="dc-val" id="d-domain">—</span>
+      </div>
     </div>
   </div>
 
@@ -1175,7 +1179,7 @@ async function processAll() {
   const CHUNK = 40;
 
   const autoMatched = [], needsReview = [], noMatch = [];
-  const stats = { email: 0, local: 0, exact: 0, fuzzy: 0 };
+  const stats = { email: 0, local: 0, exact: 0, fuzzy: 0, domain: 0 };
 
   for (let i = 0; i < ops.length; i++) {
     const res = matchOne(ops[i], okta, idx, S.fuzzy, S.gap);
@@ -1189,7 +1193,14 @@ async function processAll() {
     } else if (res.status === 'review') {
       needsReview.push({ op: ops[i], ...res });
     } else {
-      noMatch.push({ op: ops[i], ...res });
+      // Auto-match operators with aristocrat.com email domain even without an Okta user
+      const opEmail = (ops[i].email || '').toLowerCase();
+      if (opEmail.endsWith('@aristocrat.com')) {
+        autoMatched.push({ op: ops[i], status: 'auto', matchType: 'Aristocrat Domain', matchScore: 100, oktaUser: null, candidates: [], reviewReason: null });
+        stats.domain++;
+      } else {
+        noMatch.push({ op: ops[i], ...res });
+      }
     }
 
     if ((i + 1) % CHUNK === 0 || i === ops.length - 1) {
@@ -1694,6 +1705,7 @@ function updateSummary(totRaw, totFilt, totOkta, res) {
   $('d-local').textContent    = res.stats.local;
   $('d-name').textContent     = res.stats.exact;
   $('d-fuzzy').textContent    = res.stats.fuzzy;
+  $('d-domain').textContent   = res.stats.domain;
   $('summary-wrap').style.display = 'block';
 }
 
