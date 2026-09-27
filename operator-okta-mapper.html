@@ -1335,10 +1335,14 @@ ${opLines}
 Could you please confirm which account should be considered the primary user so we can grant Okta access to the correct account?
 Thanks.`;
 
-  const url = 'msteams://teams.microsoft.com/l/chat/0/0?users=' +
+  const url = 'msteams:/l/chat/0/0?users=' +
               encodeURIComponent(oktaUser.primaryEmail || '') +
               '&message=' + encodeURIComponent(msg);
-  window.location.href = url;
+  const a = document.createElement('a');
+  a.href = url;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 }
 
 function fallbackCopy(text) {
