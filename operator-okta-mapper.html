@@ -1318,6 +1318,29 @@ Thanks.`;
   }
 }
 
+/* ---- Open Teams chat with pre-filled message ---- */
+function sendViaTeams(oktaUser, entries) {
+  const customer = ($('msg-customer').value || '').trim();
+  const env      = ($('msg-env').value || '').trim();
+  const location = [customer, env].filter(Boolean).join(' ');
+
+  const opLines = entries.map(({ entry: e }) =>
+    [e.op.userName, e.op.email].filter(Boolean).join('\n')
+  ).join('\n');
+
+  const msg =
+`Hi,
+As part of our migration to Okta login for Neosphere, we identified duplicate user accounts for ${oktaUser.primaryEmail || '—'} in ${location || '<Customer> <Environment>'} env:
+${opLines}
+Could you please confirm which account should be considered the primary user so we can grant Okta access to the correct account?
+Thanks.`;
+
+  const url = 'https://teams.microsoft.com/l/chat/0/0?users=' +
+              encodeURIComponent(oktaUser.primaryEmail || '') +
+              '&message=' + encodeURIComponent(msg);
+  window.open(url, '_blank');
+}
+
 function fallbackCopy(text) {
   try {
     const ta = document.createElement('textarea');
@@ -1451,6 +1474,9 @@ function renderGroupCard(oktaUser, entries, groupKey, container) {
   const copyBtn = el('button', 'copy-msg-btn', '⎘ Copy message');
   copyBtn.addEventListener('click', () => copyDupMessage(oktaUser, entries, copyBtn));
   footer.appendChild(copyBtn);
+  const teamsBtn = el('button', 'copy-msg-btn', '💬 Send via Teams');
+  teamsBtn.addEventListener('click', () => sendViaTeams(oktaUser, entries));
+  footer.appendChild(teamsBtn);
   body.appendChild(footer);
 
   card.appendChild(body);
