@@ -1059,17 +1059,12 @@ function parseOktaXLSX(buf) {
 
 /* ============================================================
    FILTER OPERATORS
-   Keep: Status = "Enabled" AND Last Access within 2 years
+   Keep: Status = "Enabled"
 ============================================================ */
-const TWO_YRS = 2 * 365.25 * 24 * 3600 * 1000;
-
 function filterOps(ops) {
-  const now = Date.now();
   const kept = [], dropped = [];
   for (const op of ops) {
     if (op.status.toLowerCase() !== 'enabled') { dropped.push(op); continue; }
-    const dt = parseDate(op.lastAccess);
-    if (!dt || now - dt.getTime() > TWO_YRS) { dropped.push(op); continue; }
     kept.push(op);
   }
   return { kept, dropped };
@@ -1851,7 +1846,7 @@ $('analyze-btn').addEventListener('click', async () => {
   S.okta      = S.oktaRaw;
 
   log(`Total operators: ${S.opsRaw.length}`, 'info');
-  log(`Kept after filtering (Enabled + last 2 years): ${kept.length}`, 'info');
+  log(`Kept after filtering (Enabled): ${kept.length}`, 'info');
   log(`Filtered out: ${dropped.length} (disabled or stale)`, '');
   log(`Okta users: ${S.okta.length}`, 'info');
 
