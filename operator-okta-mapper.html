@@ -990,6 +990,7 @@ function parseOpsCSV(text) {
   if (!r.data.length) throw new Error('No data rows found in CSV');
 
   const H = r.meta.fields || [];
+  const cId     = findCol(H, 'ID', 'Id', 'User ID', 'UserId', 'user_id', 'operator_id', 'OperatorId');
   const cUser   = findCol(H, 'User Name', 'UserName', 'Username', 'Login', 'user_name', 'user');
   const cFull   = findCol(H, 'Full Name', 'FullName', 'Name', 'Display Name', 'DisplayName');
   const cEmail  = findCol(H, 'Email', 'Email Address', 'EmailAddress', 'mail', 'e-mail');
@@ -1006,6 +1007,7 @@ function parseOpsCSV(text) {
 
   return r.data.map((row, i) => ({
     _row:       i + 2,
+    id:         cId   ? String(row[cId]   || '').trim() : '',
     userName:   String(row[cUser]   || '').trim(),
     fullName:   String(row[cFull]   || '').trim(),
     email:      String(row[cEmail]  || '').trim(),
@@ -1630,16 +1632,26 @@ function buildWorkbook(res) {
   const wb = XLSX.utils.book_new();
 
   // Sheet 1 – Auto Matched
-  const s1 = res.autoMatched.map(r => ({
-    'Operator Username':  r.op.userName,
-    'Operator Full Name': r.op.fullName,
-    'Operator Email':     r.op.email,
-    'Okta Primary Email': r.oktaUser ? r.oktaUser.primaryEmail : '',
-    'Okta First Name':    r.oktaUser ? r.oktaUser.firstName    : '',
-    'Okta Last Name':     r.oktaUser ? r.oktaUser.lastName     : '',
-    'Match Type':         r.matchType,
-    'Match Score':        r.matchScore
-  }));
+  const ARISTO = '@aristocrat.com';
+  const s1 = res.autoMatched.map(r => {
+    const oktaEmail = r.oktaUser ? (r.oktaUser.primaryEmail || '') : '';
+    const opEmail   = r.op.email || '';
+    const primaryEmail = oktaEmail.toLowerCase().endsWith(ARISTO) ? oktaEmail
+                       : opEmail.toLowerCase().endsWith(ARISTO)   ? opEmail
+                       : '';
+    return {
+      'Operator ID':        r.op.id,
+      'Operator Username':  r.op.userName,
+      'Operator Full Name': r.op.fullName,
+      'Operator Email':     opEmail,
+      'Okta Primary Email': oktaEmail,
+      'Okta First Name':    r.oktaUser ? r.oktaUser.firstName : '',
+      'Okta Last Name':     r.oktaUser ? r.oktaUser.lastName  : '',
+      'Primary Email':      primaryEmail,
+      'Match Type':         r.matchType,
+      'Match Score':        r.matchScore
+    };
+  });
   const ws1 = XLSX.utils.json_to_sheet(s1.length ? s1 : [{ Note: 'No auto-matched operators' }]);
   colWidths(ws1, s1);
   XLSX.utils.book_append_sheet(wb, ws1, 'Auto Matched');
