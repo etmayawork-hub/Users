@@ -836,6 +836,10 @@ hr { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
         <span class="dc-val" id="d-local">—</span>
       </div>
       <div class="detail-chip">
+        <span class="dc-label">Email Local Part</span>
+        <span class="dc-val" id="d-emaillocal">—</span>
+      </div>
+      <div class="detail-chip">
         <span class="dc-label">Exact Name</span>
         <span class="dc-val" id="d-name">—</span>
       </div>
@@ -908,6 +912,14 @@ function norm(str) {
     .toLowerCase()
     .replace(/[\s.\-_',()[\]{}|/\\]/g, '')
     .replace(/[^a-z0-9@]/g, '');
+}
+
+/* Extract and normalize the local part of an email (before @), stripping all non-alphanumeric */
+function emailLocal(email) {
+  const s = String(email || '').trim();
+  const at = s.indexOf('@');
+  const local = at >= 0 ? s.slice(0, at) : s;
+  return local.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
 /* ============================================================
@@ -1093,14 +1105,16 @@ function filterOps(ops) {
    BUILD OKTA INDEX  (O(1) email lookups)
 ============================================================ */
 function buildIndex(okta) {
-  const byPE = new Map(), byLU = new Map();
+  const byPE = new Map(), byLU = new Map(), byEL = new Map();
   for (const u of okta) {
     const pe = norm(u.primaryEmail);
     if (pe) { if (!byPE.has(pe)) byPE.set(pe, []); byPE.get(pe).push(u); }
     const lu = norm(u.localUsername);
     if (lu) { if (!byLU.has(lu)) byLU.set(lu, []); byLU.get(lu).push(u); }
+    const el = emailLocal(u.primaryEmail);
+    if (el) { if (!byEL.has(el)) byEL.set(el, []); byEL.get(el).push(u); }
   }
-  return { byPE, byLU };
+  return { byPE, byLU, byEL };
 }
 
 /* ============================================================
@@ -1127,11 +1141,43 @@ function matchOne(op, okta, idx, fuzzyThr, gapThr) {
     if (lm.length > 1)  return { status: 'review', matchType: 'Local Username', matchScore: 95, oktaUser: null,  candidates: lm,  reviewReason: 'Multiple Local Username Matches' };
   }
 
+  /* ---- Priority 3 : Email local-part match (exact then fuzzy) ---- */
+  const opLocal = emailLocal(op.email);
+  if (opLocal) {
+    // Exact local-part match after stripping special chars
+    const el = idx.byEL.get(opLocal) || [];
+    if (el.length === 1) return { status: 'auto',   matchType: 'Email Local Part', matchScore: 92, oktaUser: el[0], candidates: [],  reviewReason: null };
+    if (el.length > 1)  return { status: 'review', matchType: 'Email Local Part', matchScore: 92, oktaUser: null,  candidates: el,  reviewReason: 'Multiple Email Local Matches' };
+
+    // Fuzzy local-part match using the configured threshold
+    const thr = fuzzyThr / 100;
+    const fuzzyLocal = [];
+    for (const u of okta) {
+      const uLocal = emailLocal(u.primaryEmail);
+      if (!uLocal) continue;
+      const lr = Math.min(opLocal.length, uLocal.length) / Math.max(opLocal.length, uLocal.length);
+      if (lr < 0.5) continue;
+      const sim = fuzzyScore(opLocal, uLocal);
+      if (sim >= thr) fuzzyLocal.push({ u, sim });
+    }
+    if (fuzzyLocal.length) {
+      fuzzyLocal.sort((a, b) => b.sim - a.sim);
+      if (fuzzyLocal.length === 1) {
+        return { status: 'auto', matchType: 'Email Local Part', matchScore: Math.round(fuzzyLocal[0].sim * 100), oktaUser: fuzzyLocal[0].u, candidates: [], reviewReason: null };
+      }
+      const top = fuzzyLocal[0], sec = fuzzyLocal[1];
+      if ((top.sim - sec.sim) * 100 >= gapThr) {
+        return { status: 'auto', matchType: 'Email Local Part', matchScore: Math.round(top.sim * 100), oktaUser: top.u, candidates: [], reviewReason: null };
+      }
+      return { status: 'review', matchType: 'Email Local Part', matchScore: Math.round(top.sim * 100), oktaUser: null, candidates: fuzzyLocal.slice(0, 5).map(f => f.u), reviewReason: 'Similar Scores' };
+    }
+  }
+
   if (!opFull) {
     return { status: 'nomatch', noMatchReason: opEmail ? 'No Matching Email' : 'No Matching Name' };
   }
 
-  /* ---- Priority 3 : Exact full name match ---- */
+  /* ---- Priority 4 : Exact full name match ---- */
   const exactMatches = okta.filter(u => norm(u.firstName + u.lastName) === opFull);
   if (exactMatches.length === 1) return { status: 'auto',   matchType: 'Exact Name', matchScore: 90, oktaUser: exactMatches[0], candidates: [],          reviewReason: null };
   if (exactMatches.length > 1)  return { status: 'review', matchType: 'Exact Name', matchScore: 90, oktaUser: null,            candidates: exactMatches, reviewReason: 'Multiple Name Matches' };
@@ -1195,15 +1241,16 @@ async function processAll() {
   const CHUNK = 40;
 
   const autoMatched = [], needsReview = [], noMatch = [];
-  const stats = { email: 0, local: 0, exact: 0, fuzzy: 0, domain: 0 };
+  const stats = { email: 0, local: 0, emailLocal: 0, exact: 0, fuzzy: 0, domain: 0 };
 
   for (let i = 0; i < ops.length; i++) {
     const res = matchOne(ops[i], okta, idx, S.fuzzy, S.gap);
 
     if (res.status === 'auto') {
       autoMatched.push({ op: ops[i], ...res });
-      if (res.matchType === 'Exact Email')    stats.email++;
+      if (res.matchType === 'Exact Email')         stats.email++;
       else if (res.matchType === 'Local Username') stats.local++;
+      else if (res.matchType === 'Email Local Part') stats.emailLocal++;
       else if (res.matchType === 'Exact Name')     stats.exact++;
       else if (res.matchType === 'Fuzzy Name')     stats.fuzzy++;
     } else if (res.status === 'review') {
@@ -1242,10 +1289,11 @@ async function processAll() {
     if (pe && emailCount.get(pe) > 1) {
       needsReview.push({ ...r, oktaUser: null, candidates: [r.oktaUser], reviewReason: 'Duplicate Okta Primary Email' });
       // Undo the match-type stat counter
-      if (r.matchType === 'Exact Email')    stats.email--;
-      else if (r.matchType === 'Local Username') stats.local--;
-      else if (r.matchType === 'Exact Name')     stats.exact--;
-      else if (r.matchType === 'Fuzzy Name')     stats.fuzzy--;
+      if (r.matchType === 'Exact Email')           stats.email--;
+      else if (r.matchType === 'Local Username')   stats.local--;
+      else if (r.matchType === 'Email Local Part') stats.emailLocal--;
+      else if (r.matchType === 'Exact Name')       stats.exact--;
+      else if (r.matchType === 'Fuzzy Name')       stats.fuzzy--;
     } else {
       dedupedAuto.push(r);
     }
@@ -1811,11 +1859,12 @@ function updateSummary(totRaw, totFilt, totOkta, res) {
   $('s-auto').textContent     = res.autoMatched.length;
   $('s-review').textContent   = res.needsReview.length;
   $('s-nomatch').textContent  = res.noMatch.length;
-  $('d-email').textContent    = res.stats.email;
-  $('d-local').textContent    = res.stats.local;
-  $('d-name').textContent     = res.stats.exact;
-  $('d-fuzzy').textContent    = res.stats.fuzzy;
-  $('d-domain').textContent   = res.stats.domain;
+  $('d-email').textContent      = res.stats.email;
+  $('d-local').textContent      = res.stats.local;
+  $('d-emaillocal').textContent = res.stats.emailLocal;
+  $('d-name').textContent       = res.stats.exact;
+  $('d-fuzzy').textContent      = res.stats.fuzzy;
+  $('d-domain').textContent     = res.stats.domain;
   $('summary-wrap').style.display = 'block';
 }
 
