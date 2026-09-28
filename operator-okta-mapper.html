@@ -513,7 +513,8 @@ body {
 .rc-reason.email   { background: var(--info-bg);    color: var(--info);    }
 .rc-reason.name    { background: var(--warning-bg);  color: var(--warning); }
 .rc-reason.fuzzy   { background: var(--accent-bg);   color: var(--accent);  }
-.rc-reason.dup     { background: var(--danger-bg);   color: var(--danger);  }
+.rc-reason.dup       { background: var(--danger-bg);   color: var(--danger);  }
+.rc-reason.neosphere { background: var(--info-bg);    color: var(--info);    }
 
 .rc-body { padding: 10px 14px 12px; }
 
@@ -667,6 +668,24 @@ body {
 
 .copy-msg-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-bg); }
 .copy-msg-btn.copied { border-color: var(--success); color: var(--success); background: var(--success-bg); }
+
+/* Neosphere manual-email input */
+.neosphere-email-input {
+  flex: 1;
+  min-width: 220px;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface2);
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  outline: none;
+  transition: border-color .15s;
+}
+.neosphere-email-input:focus { border-color: var(--accent); }
+.neosphere-email-input.valid { border-color: var(--success); }
+.neosphere-email-input.invalid { border-color: var(--danger); }
 
 /* ===== LOG ===== */
 .log-wrap { display: none; }
@@ -1190,11 +1209,12 @@ async function processAll() {
     } else if (res.status === 'review') {
       needsReview.push({ op: ops[i], ...res });
     } else {
-      // Auto-match operators with aristocrat.com email domain even without an Okta user
       const opEmail = (ops[i].email || '').toLowerCase();
       if (opEmail.endsWith('@aristocrat.com')) {
         autoMatched.push({ op: ops[i], status: 'auto', matchType: 'Aristocrat Domain', matchScore: 100, oktaUser: null, candidates: [], reviewReason: null });
         stats.domain++;
+      } else if (opEmail.endsWith('@neosphere.com')) {
+        needsReview.push({ op: ops[i], status: 'review', matchType: null, matchScore: null, oktaUser: null, candidates: [], reviewReason: 'Neosphere Domain' });
       } else {
         noMatch.push({ op: ops[i], ...res });
       }
@@ -1538,6 +1558,73 @@ function confirmIndividual(idx) {
   updateReviewBadge(S.results.needsReview);
 }
 
+/* ---- NEOSPHERE card: enter aristocrat email or ignore ---- */
+function renderNeosphereCard(entry, idx, container) {
+  const cardId = 'rcn-' + idx;
+  const btnId  = 'rcnbtn-' + idx;
+
+  const card = el('div', 'rc');
+  card.id = cardId;
+
+  const head = el('div', 'rc-head');
+  const opDiv = el('div', 'rc-op');
+  opDiv.appendChild(el('span', 'rc-username', entry.op.userName));
+  opDiv.appendChild(el('span', 'rc-fullname', entry.op.fullName || '(no name)'));
+  if (entry.op.email) opDiv.appendChild(el('span', 'rc-email', entry.op.email));
+  head.appendChild(opDiv);
+  head.appendChild(el('span', 'rc-reason neosphere', 'Neosphere Domain'));
+  card.appendChild(head);
+
+  const body = el('div', 'rc-body');
+  body.appendChild(el('div', 'rc-q', 'Enter the corresponding Aristocrat.com email, or ignore this operator:'));
+
+  const emailInput = document.createElement('input');
+  emailInput.type = 'text';
+  emailInput.placeholder = 'e.g. john.doe@aristocrat.com';
+  emailInput.className = 'neosphere-email-input';
+  emailInput.id = 'rcn-input-' + idx;
+
+  const confirmBtn = document.createElement('button');
+  confirmBtn.className = 'btn btn-primary';
+  confirmBtn.id = btnId;
+  confirmBtn.textContent = 'Confirm email';
+  confirmBtn.style.cssText = 'padding:7px 16px;font-size:13px;';
+  confirmBtn.disabled = true;
+
+  const ignoreBtn = document.createElement('button');
+  ignoreBtn.className = 'copy-msg-btn';
+  ignoreBtn.style.marginTop = '0';
+  ignoreBtn.textContent = 'Ignore';
+
+  emailInput.addEventListener('input', () => {
+    const val = emailInput.value.trim().toLowerCase();
+    const ok  = val.endsWith('@aristocrat.com') && val.length > '@aristocrat.com'.length;
+    emailInput.classList.toggle('valid',   ok);
+    emailInput.classList.toggle('invalid', val.length > 0 && !ok);
+    confirmBtn.disabled = !ok;
+  });
+
+  confirmBtn.addEventListener('click', () => confirmNeosphere(idx, emailInput.value.trim()));
+  ignoreBtn.addEventListener('click',  () => confirmNeosphere(idx, null));
+
+  const footer = el('div', '');
+  footer.style.cssText = 'display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:12px;';
+  footer.appendChild(emailInput);
+  footer.appendChild(confirmBtn);
+  footer.appendChild(ignoreBtn);
+  body.appendChild(footer);
+
+  card.appendChild(body);
+  container.appendChild(card);
+}
+
+function confirmNeosphere(idx, email) {
+  const entry = S.results.needsReview[idx];
+  entry._resolution = email ? { type: 'manualEmail', email } : { type: 'nomatch' };
+  $('rcn-' + idx).classList.add('rc-resolved');
+  updateReviewBadge(S.results.needsReview);
+}
+
 /* ---- main render ---- */
 function renderReviewUI(needsReview) {
   const list = $('review-list');
@@ -1554,12 +1641,15 @@ function renderReviewUI(needsReview) {
   const dupGroups = new Map();   // primaryEmail → { oktaUser, entries: [{entry, idx}] }
   const others    = [];
 
+  const neosphere = [];
   needsReview.forEach((entry, idx) => {
     if (entry.reviewReason === 'Duplicate Okta Primary Email') {
       const cand = entry.candidates && entry.candidates[0];
       const key  = cand ? cand.primaryEmail : '_unknown';
       if (!dupGroups.has(key)) dupGroups.set(key, { oktaUser: cand, entries: [] });
       dupGroups.get(key).entries.push({ entry, idx });
+    } else if (entry.reviewReason === 'Neosphere Domain') {
+      neosphere.push({ entry, idx });
     } else {
       others.push({ entry, idx });
     }
@@ -1570,6 +1660,9 @@ function renderReviewUI(needsReview) {
   dupGroups.forEach(({ oktaUser, entries }) => {
     renderGroupCard(oktaUser, entries, 'g' + groupCounter++, list);
   });
+
+  // Render Neosphere cards
+  neosphere.forEach(({ entry, idx }) => renderNeosphereCard(entry, idx, list));
 
   // Render individual cards
   others.forEach(({ entry, idx }) => renderIndividualCard(entry, idx, list));
@@ -1602,6 +1695,15 @@ function mergeResolutions(res) {
         matchScore: 100,
         candidates: []
       });
+    } else if (entry._resolution.type === 'manualEmail') {
+      autoMatched.push({
+        ...entry,
+        oktaUser:          null,
+        matchType:         'Manual Email',
+        matchScore:        100,
+        manualPrimaryEmail: entry._resolution.email,
+        candidates:        []
+      });
     } else {
       noMatch.push({ ...entry, noMatchReason: 'Manual Review – No Match' });
     }
@@ -1631,8 +1733,9 @@ function buildWorkbook(res) {
   const s1 = res.autoMatched.map(r => {
     const oktaEmail = r.oktaUser ? (r.oktaUser.primaryEmail || '') : '';
     const opEmail   = r.op.email || '';
-    const primaryEmail = oktaEmail.toLowerCase().endsWith(ARISTO) ? oktaEmail
-                       : opEmail.toLowerCase().endsWith(ARISTO)   ? opEmail
+    const primaryEmail = r.manualPrimaryEmail                          ? r.manualPrimaryEmail
+                       : oktaEmail.toLowerCase().endsWith(ARISTO)    ? oktaEmail
+                       : opEmail.toLowerCase().endsWith(ARISTO)      ? opEmail
                        : '';
     return {
       'Operator ID':        r.op.id,
