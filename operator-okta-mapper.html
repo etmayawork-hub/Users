@@ -157,7 +157,7 @@ body {
 /* ===== UPLOAD GRID ===== */
 .upload-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 14px;
   margin-bottom: 16px;
 }
@@ -793,6 +793,14 @@ hr { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
       <div class="uc-hint">XLSX &bull; First name &bull; Last name &bull; Primary email &bull; localUsername</div>
       <div class="uc-status" id="okta-status"></div>
     </div>
+
+    <div class="upload-card" id="aristo-card">
+      <input type="file" id="aristo-file" accept=".xlsx,.xls" title="Upload Aristocrat Employees XLSX">
+      <span class="uc-icon">🏢</span>
+      <div class="uc-title">Aristocrat Employees <span style="font-size:10px;font-weight:600;color:var(--text-subtle);vertical-align:middle;">(optional)</span></div>
+      <div class="uc-hint">XLSX &bull; First &bull; Last &bull; Email &mdash; fallback name matching for No Match</div>
+      <div class="uc-status" id="aristo-status"></div>
+    </div>
   </div>
 
   <!-- Settings -->
@@ -901,6 +909,10 @@ hr { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
         <span class="dc-label">Aristocrat Domain</span>
         <span class="dc-val" id="d-domain">—</span>
       </div>
+      <div class="detail-chip" id="d-aristo-chip" style="display:none">
+        <span class="dc-label">Aristocrat Directory</span>
+        <span class="dc-val" id="d-aristo">—</span>
+      </div>
     </div>
   </div>
 
@@ -936,8 +948,10 @@ hr { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
 const S = {
   opsRaw:    null,
   oktaRaw:   null,
+  aristoRaw: null,
   operators: [],
   okta:      [],
+  aristo:    [],
   results:   null,
   fuzzy:          90,
   gap:            20,
@@ -1148,6 +1162,36 @@ function parseOktaXLSX(buf) {
 }
 
 /* ============================================================
+   PARSE ARISTOCRAT EMPLOYEES XLSX  (First / Last / Email)
+============================================================ */
+function parseAristoXLSX(buf) {
+  const wb   = XLSX.read(new Uint8Array(buf), { type: 'array' });
+  const ws   = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true });
+
+  if (rows.length < 2) throw new Error('Aristocrat XLSX appears empty');
+
+  const H = rows[0].map(h => String(h || '').trim());
+  const cFirst = findCol(H, 'First', 'FirstName', 'First name', 'Given Name');
+  const cLast  = findCol(H, 'Last',  'LastName',  'Last name',  'Surname', 'Family Name');
+  const cEmail = findCol(H, 'Email', 'EmailAddress', 'Primary email', 'Email Address');
+
+  if (!cFirst || !cLast || !cEmail)
+    throw new Error(`Could not find required columns (First / Last / Email). Found: ${H.join(', ')}`);
+
+  const iF = H.indexOf(cFirst), iL = H.indexOf(cLast), iE = H.indexOf(cEmail);
+
+  return rows.slice(1)
+    .filter(row => row.some(v => v != null && v !== ''))
+    .map(row => ({
+      firstName: String(row[iF] || '').trim(),
+      lastName:  String(row[iL] || '').trim(),
+      email:     String(row[iE] || '').trim()
+    }))
+    .filter(e => e.email);
+}
+
+/* ============================================================
    FILTER OPERATORS
    Keep: Status = "Enabled" (+ optional last-active cutoff)
 ============================================================ */
@@ -1305,7 +1349,7 @@ async function processAll() {
   const CHUNK = 40;
 
   const autoMatched = [], needsReview = [], noMatch = [];
-  const stats = { email: 0, local: 0, emailLocal: 0, exact: 0, fuzzy: 0, domain: 0 };
+  const stats = { email: 0, local: 0, emailLocal: 0, exact: 0, fuzzy: 0, domain: 0, aristo: 0 };
 
   for (let i = 0; i < ops.length; i++) {
     const res = matchOne(ops[i], okta, idx, S.fuzzy, S.gap);
@@ -1363,7 +1407,62 @@ async function processAll() {
     }
   }
 
-  return { autoMatched: dedupedAuto, needsReview, noMatch, stats };
+  /* ---- Post-process: Aristocrat employee directory fallback ---- */
+  // For operators still in noMatch, try name-matching against the Aristocrat
+  // employee list if one was uploaded. A match promotes the operator to
+  // autoMatched and sets their Aristocrat email as the Primary Email.
+  const finalNoMatch = [];
+  if (S.aristo.length) {
+    const thr = S.fuzzy / 100;
+    for (const entry of noMatch) {
+      const opFull  = norm(entry.op.fullName);
+      const opFirst = entry.op.fullName.trim().split(/\s+/)[0] ? norm(entry.op.fullName.trim().split(/\s+/)[0]) : '';
+      const opLast  = entry.op.fullName.trim().split(/\s+/).slice(-1)[0] ? norm(entry.op.fullName.trim().split(/\s+/).slice(-1)[0]) : '';
+      if (!opFull) { finalNoMatch.push(entry); continue; }
+
+      // Exact full name
+      const exact = S.aristo.filter(a => norm(a.firstName + a.lastName) === opFull);
+      if (exact.length === 1) {
+        autoMatched.push({ ...entry, status: 'auto', matchType: 'Aristocrat Directory', matchScore: 90,
+          oktaUser: null, manualPrimaryEmail: exact[0].email, candidates: [], reviewReason: null });
+        stats.aristo++;
+        continue;
+      }
+
+      // Fuzzy name
+      const fuzzyA = [];
+      for (const a of S.aristo) {
+        const aFull = norm(a.firstName + a.lastName);
+        if (!aFull) continue;
+        const lr = Math.min(opFull.length, aFull.length) / Math.max(opFull.length, aFull.length);
+        if (lr < 0.45) continue;
+        const sim = fuzzyScore(opFull, aFull);
+        if (sim >= thr) {
+          let cs = sim * 100;
+          if (opFirst && norm(a.firstName) === opFirst) cs += 30;
+          if (opLast  && norm(a.lastName)  === opLast)  cs += 30;
+          fuzzyA.push({ a, sim, cs });
+        }
+      }
+      if (fuzzyA.length) {
+        fuzzyA.sort((x, y) => y.cs - x.cs);
+        const top = fuzzyA[0];
+        if (fuzzyA.length === 1 || top.cs - fuzzyA[1].cs >= S.gap) {
+          autoMatched.push({ ...entry, status: 'auto', matchType: 'Aristocrat Directory',
+            matchScore: Math.round(top.sim * 100), oktaUser: null,
+            manualPrimaryEmail: top.a.email, candidates: [], reviewReason: null });
+          stats.aristo++;
+          continue;
+        }
+      }
+
+      finalNoMatch.push(entry);
+    }
+  } else {
+    finalNoMatch.push(...noMatch);
+  }
+
+  return { autoMatched: dedupedAuto, needsReview, noMatch: finalNoMatch, stats };
 }
 
 /* ============================================================
@@ -2023,6 +2122,12 @@ function updateSummary(totRaw, totFilt, totOkta, res) {
   $('d-name').textContent       = res.stats.exact;
   $('d-fuzzy').textContent      = res.stats.fuzzy;
   $('d-domain').textContent     = res.stats.domain;
+  if (res.stats.aristo > 0) {
+    $('d-aristo').textContent    = res.stats.aristo;
+    $('d-aristo-chip').style.display = '';
+  } else {
+    $('d-aristo-chip').style.display = 'none';
+  }
   $('summary-wrap').style.display = 'block';
 }
 
@@ -2094,9 +2199,11 @@ function setStatus(statusId, cardId, msg, ok) {
 }
 
 function handleOpsFile(file, statusId, cardId) {
-  const hadOkta = S.oktaRaw;
+  const hadOkta  = S.oktaRaw;
+  const hadAristo = S.aristoRaw;
   resetPage();
-  if (hadOkta) { S.oktaRaw = hadOkta; setStatus('okta-status', 'okta-card', `✓ ${hadOkta.length} users loaded`, true); }
+  if (hadOkta)  { S.oktaRaw = hadOkta; setStatus('okta-status', 'okta-card', `✓ ${hadOkta.length} users loaded`, true); }
+  if (hadAristo) { S.aristoRaw = hadAristo; S.aristo = hadAristo; setStatus('aristo-status', 'aristo-card', `✓ ${hadAristo.length} employees loaded`, true); }
   const r = new FileReader();
   r.onload = e => {
     try {
@@ -2114,9 +2221,11 @@ function handleOpsFile(file, statusId, cardId) {
 }
 
 function handleOktaFile(file, statusId, cardId) {
-  const hadOps = S.opsRaw;
+  const hadOps   = S.opsRaw;
+  const hadAristo = S.aristoRaw;
   resetPage();
-  if (hadOps) { S.opsRaw = hadOps; setStatus('ops-status', 'ops-card', `✓ ${hadOps.length} rows loaded`, true); }
+  if (hadOps)   { S.opsRaw = hadOps; setStatus('ops-status', 'ops-card', `✓ ${hadOps.length} rows loaded`, true); }
+  if (hadAristo) { S.aristoRaw = hadAristo; S.aristo = hadAristo; setStatus('aristo-status', 'aristo-card', `✓ ${hadAristo.length} employees loaded`, true); }
   const r = new FileReader();
   r.onload = e => {
     try {
@@ -2128,6 +2237,24 @@ function handleOktaFile(file, statusId, cardId) {
     } catch (err) {
       setStatus(statusId, cardId, '✗ ' + err.message, false);
       log('Okta load error: ' + err.message, 'err');
+    }
+  };
+  r.readAsArrayBuffer(file);
+}
+
+function handleAristoFile(file, statusId, cardId) {
+  const r = new FileReader();
+  r.onload = e => {
+    try {
+      const data = parseAristoXLSX(e.target.result);
+      S.aristoRaw = data;
+      S.aristo    = data;
+      setStatus(statusId, cardId, `✓ ${data.length} employees loaded`, true);
+      log(`Aristocrat directory loaded: ${data.length} employees — "${file.name}"`, 'ok');
+    } catch (err) {
+      S.aristoRaw = null; S.aristo = [];
+      setStatus(statusId, cardId, '✗ ' + err.message, false);
+      log('Aristocrat directory error: ' + err.message, 'err');
     }
   };
   r.readAsArrayBuffer(file);
@@ -2177,6 +2304,7 @@ $('analyze-btn').addEventListener('click', async () => {
   log(`  Local username:   ${results.stats.local}`, '');
   log(`  Exact name:       ${results.stats.exact}`, '');
   log(`  Fuzzy name:       ${results.stats.fuzzy}`, '');
+  if (results.stats.aristo) log(`  Aristo directory: ${results.stats.aristo}`, '');
   log(`Needs review:       ${results.needsReview.length}`, results.needsReview.length ? 'warn' : '');
   log(`No match found:     ${results.noMatch.length}`, results.noMatch.length ? 'warn' : 'ok');
   log('Ready to download.', 'ok');
@@ -2231,8 +2359,9 @@ $('download-btn').addEventListener('click', () => {
 /* ============================================================
    INIT
 ============================================================ */
-setupUpload('ops-file',  'ops-card',  'ops-status',  handleOpsFile);
-setupUpload('okta-file', 'okta-card', 'okta-status', handleOktaFile);
+setupUpload('ops-file',    'ops-card',    'ops-status',    handleOpsFile);
+setupUpload('okta-file',   'okta-card',   'okta-status',   handleOktaFile);
+setupUpload('aristo-file', 'aristo-card', 'aristo-status', handleAristoFile);
 </script>
 </body>
 </html>
