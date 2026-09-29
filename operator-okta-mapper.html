@@ -732,6 +732,79 @@ body {
 .neosphere-email-input.valid { border-color: var(--success); }
 .neosphere-email-input.invalid { border-color: var(--danger); }
 
+/* ===== NO MATCH DOMAIN GROUPS ===== */
+.nm-group { margin-bottom: 10px; }
+
+.nm-group-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  user-select: none;
+  transition: border-color .15s, background .15s;
+}
+.nm-group-head:hover { border-color: var(--border-strong); }
+.nm-group-head.open {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-bottom-color: transparent;
+}
+
+.nm-domain {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.nm-count {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--border);
+  color: var(--text-muted);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.nm-chevron {
+  font-size: 11px;
+  color: var(--text-subtle);
+  transition: transform .2s;
+  flex-shrink: 0;
+}
+.nm-group-head.open .nm-chevron { transform: rotate(180deg); }
+
+.nm-ignore-all-btn {
+  margin-left: auto;
+  padding: 4px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  border: 1px solid var(--danger);
+  background: var(--danger-bg);
+  color: var(--danger);
+  transition: opacity .15s;
+  flex-shrink: 0;
+}
+.nm-ignore-all-btn:hover { opacity: .8; }
+
+.nm-group-body {
+  display: none;
+  border: 1px solid var(--border);
+  border-top: none;
+  border-bottom-left-radius: var(--radius-sm);
+  border-bottom-right-radius: var(--radius-sm);
+  padding: 10px 10px 4px;
+}
+.nm-group-body.open { display: block; }
+
 /* ===== LOG ===== */
 .log-wrap { display: none; }
 
@@ -1945,7 +2018,53 @@ function renderReviewUI(needsReview, noMatch) {
 
   if (noMatch.length) {
     const wrap = makeSection('nomatch');
-    noMatch.forEach((entry, idx) => renderNoMatchCard(entry, idx, wrap));
+
+    // Group by email domain, sorted by count descending
+    const byDomain = new Map();
+    noMatch.forEach((entry, idx) => {
+      const email = (entry.op.email || '').toLowerCase();
+      const at = email.indexOf('@');
+      const domain = at >= 0 ? email.slice(at + 1) : '(no email)';
+      if (!byDomain.has(domain)) byDomain.set(domain, []);
+      byDomain.get(domain).push({ entry, idx });
+    });
+    const sortedDomains = [...byDomain.entries()].sort((a, b) => b[1].length - a[1].length);
+
+    for (const [domain, items] of sortedDomains) {
+      const groupEl = el('div', 'nm-group');
+
+      // Group header (collapsed by default)
+      const head = el('div', 'nm-group-head');
+      head.appendChild(el('span', 'nm-domain', '@' + domain));
+      head.appendChild(el('span', 'nm-count', items.length + ' operator' + (items.length > 1 ? 's' : '')));
+
+      const ignoreAllBtn = el('button', 'nm-ignore-all-btn', 'Ignore All');
+      ignoreAllBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        items.forEach(({ entry }) => {
+          if (!entry._resolution) entry._resolution = { type: 'ignored' };
+        });
+        body.querySelectorAll('.rc').forEach(c => c.classList.add('rc-resolved'));
+        ignoreAllBtn.textContent = '✓ All Ignored';
+        ignoreAllBtn.disabled = true;
+        updateReviewBadge(S.results.needsReview, S.results.noMatch);
+      });
+      head.appendChild(ignoreAllBtn);
+      head.appendChild(el('span', 'nm-chevron', '▼'));
+
+      const body = el('div', 'nm-group-body');
+      items.forEach(({ entry, idx }) => renderNoMatchCard(entry, idx, body));
+
+      head.addEventListener('click', e => {
+        if (e.target.closest('.nm-ignore-all-btn')) return;
+        head.classList.toggle('open');
+        body.classList.toggle('open');
+      });
+
+      groupEl.appendChild(head);
+      groupEl.appendChild(body);
+      wrap.appendChild(groupEl);
+    }
   }
 
   if (others.length) {
