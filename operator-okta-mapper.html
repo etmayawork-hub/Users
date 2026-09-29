@@ -459,6 +459,51 @@ body {
   color: var(--success);
 }
 
+/* Review filter chips */
+.review-filters {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.rf-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all .15s;
+}
+.rf-chip.active   { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
+.rf-chip .rf-count { font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+
+/* Find in directory button */
+.find-dir-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 0;
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  border: 1px solid var(--info);
+  background: var(--info-bg);
+  color: var(--info);
+  transition: opacity .15s;
+  text-decoration: none;
+}
+.find-dir-btn:hover { opacity: .8; }
+
 .rc {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -868,6 +913,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
         <span class="review-progress-badge" id="review-badge">0 / 0 resolved</span>
       </div>
     </div>
+    <div id="review-filters" class="review-filters" style="display:none"></div>
     <div id="review-list"></div>
   </div>
 
@@ -1555,7 +1601,7 @@ function confirmGroup(groupKey, entries, oktaUser) {
   });
 
   $('rcg-' + groupKey).classList.add('rc-resolved');
-  updateReviewBadge(S.results.needsReview);
+  updateReviewBadge(S.results.needsReview, S.results.noMatch);
 }
 
 /* ---- INDIVIDUAL card: one operator → pick which Okta candidate ---- */
@@ -1621,13 +1667,17 @@ function confirmIndividual(idx) {
   }
 
   $('rc-' + idx).classList.add('rc-resolved');
-  updateReviewBadge(S.results.needsReview);
+  updateReviewBadge(S.results.needsReview, S.results.noMatch);
 }
 
 /* ---- NEOSPHERE card: enter aristocrat email or ignore ---- */
-function renderNeosphereCard(entry, idx, container) {
-  const cardId = 'rcn-' + idx;
-  const btnId  = 'rcnbtn-' + idx;
+/* ---- Shared manual-email card: Neogames Domain + No Match Found ---- */
+// prefix: 'rcn' for needsReview entries, 'rcm' for noMatch entries
+// reasonLabel/reasonClass: badge text and CSS modifier
+// onConfirm(email|null): called when user confirms or ignores
+function renderManualEmailCard(entry, cardPrefix, idx, reasonLabel, reasonCls, onConfirm, container) {
+  const cardId = cardPrefix + '-' + idx;
+  const btnId  = cardPrefix + 'btn-' + idx;
 
   const card = el('div', 'rc');
   card.id = cardId;
@@ -1638,7 +1688,7 @@ function renderNeosphereCard(entry, idx, container) {
   opDiv.appendChild(el('span', 'rc-fullname', entry.op.fullName || '(no name)'));
   if (entry.op.email) opDiv.appendChild(el('span', 'rc-email', entry.op.email));
   head.appendChild(opDiv);
-  head.appendChild(el('span', 'rc-reason neosphere', 'Neogames Domain'));
+  head.appendChild(el('span', 'rc-reason ' + reasonCls, reasonLabel));
   card.appendChild(head);
 
   const body = el('div', 'rc-body');
@@ -1648,7 +1698,7 @@ function renderNeosphereCard(entry, idx, container) {
   emailInput.type = 'text';
   emailInput.placeholder = 'e.g. john.doe@aristocrat.com';
   emailInput.className = 'neosphere-email-input';
-  emailInput.id = 'rcn-input-' + idx;
+  emailInput.id = cardPrefix + '-input-' + idx;
 
   const confirmBtn = document.createElement('button');
   confirmBtn.className = 'btn btn-primary';
@@ -1662,6 +1712,14 @@ function renderNeosphereCard(entry, idx, container) {
   ignoreBtn.style.marginTop = '0';
   ignoreBtn.textContent = 'Ignore';
 
+  const searchName = (entry.op.fullName || entry.op.userName || '').trim();
+  const dirBtn = document.createElement('a');
+  dirBtn.className = 'find-dir-btn';
+  dirBtn.textContent = '🔍 Find in directory';
+  dirBtn.href = 'https://www.office.com/search?q=' + encodeURIComponent(searchName) + '&filters=people';
+  dirBtn.target = '_blank';
+  dirBtn.rel = 'noopener';
+
   emailInput.addEventListener('input', () => {
     const val = emailInput.value.trim().toLowerCase();
     const ok  = val.endsWith('@aristocrat.com') && val.length > '@aristocrat.com'.length;
@@ -1670,11 +1728,20 @@ function renderNeosphereCard(entry, idx, container) {
     confirmBtn.disabled = !ok;
   });
 
-  confirmBtn.addEventListener('click', () => confirmNeosphere(idx, emailInput.value.trim()));
-  ignoreBtn.addEventListener('click',  () => confirmNeosphere(idx, null));
+  confirmBtn.addEventListener('click', () => {
+    onConfirm(emailInput.value.trim());
+    card.classList.add('rc-resolved');
+    updateReviewBadge(S.results.needsReview, S.results.noMatch);
+  });
+  ignoreBtn.addEventListener('click', () => {
+    onConfirm(null);
+    card.classList.add('rc-resolved');
+    updateReviewBadge(S.results.needsReview, S.results.noMatch);
+  });
 
   const footer = el('div', '');
   footer.style.cssText = 'display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:12px;';
+  footer.appendChild(dirBtn);
   footer.appendChild(emailInput);
   footer.appendChild(confirmBtn);
   footer.appendChild(ignoreBtn);
@@ -1684,30 +1751,37 @@ function renderNeosphereCard(entry, idx, container) {
   container.appendChild(card);
 }
 
-function confirmNeosphere(idx, email) {
-  const entry = S.results.needsReview[idx];
-  entry._resolution = email ? { type: 'manualEmail', email } : { type: 'nomatch' };
-  $('rcn-' + idx).classList.add('rc-resolved');
-  updateReviewBadge(S.results.needsReview);
+function renderNeosphereCard(entry, idx, container) {
+  renderManualEmailCard(entry, 'rcn', idx, 'Neogames Domain', 'neosphere',
+    email => { S.results.needsReview[idx]._resolution = email ? { type: 'manualEmail', email } : { type: 'nomatch' }; },
+    container);
+}
+
+function renderNoMatchCard(entry, idx, container) {
+  renderManualEmailCard(entry, 'rcm', idx, 'No Match Found', 'name',
+    email => { S.results.noMatch[idx]._resolution = email ? { type: 'manualEmail', email } : { type: 'ignored' }; },
+    container);
 }
 
 /* ---- main render ---- */
-function renderReviewUI(needsReview) {
+function renderReviewUI(needsReview, noMatch) {
   const list = $('review-list');
   list.innerHTML = '';
+  noMatch = noMatch || [];
 
-  if (!needsReview.length) {
+  if (!needsReview.length && !noMatch.length) {
     $('review-wrap').style.display = 'none';
+    $('review-filters').style.display = 'none';
     return;
   }
 
   $('review-wrap').style.display = 'block';
 
   // Group "Duplicate Okta Primary Email" entries by primary email
-  const dupGroups = new Map();   // primaryEmail → { oktaUser, entries: [{entry, idx}] }
+  const dupGroups = new Map();
+  const neosphere = [];
   const others    = [];
 
-  const neosphere = [];
   needsReview.forEach((entry, idx) => {
     if (entry.reviewReason === 'Duplicate Okta Primary Email') {
       const cand = entry.candidates && entry.candidates[0];
@@ -1721,24 +1795,73 @@ function renderReviewUI(needsReview) {
     }
   });
 
-  // Render duplicate groups first (each group is one card)
-  let groupCounter = 0;
-  dupGroups.forEach(({ oktaUser, entries }) => {
-    renderGroupCard(oktaUser, entries, 'g' + groupCounter++, list);
-  });
+  // Build sections
+  const sections = [
+    { key: 'dup',      label: 'Duplicate Okta Email', count: dupGroups.size },
+    { key: 'neo',      label: 'Neogames Domain',      count: neosphere.length },
+    { key: 'nomatch',  label: 'No Match',              count: noMatch.length  },
+    { key: 'other',    label: 'Other',                 count: others.length   },
+  ].filter(s => s.count > 0);
 
-  // Render Neosphere cards
-  neosphere.forEach(({ entry, idx }) => renderNeosphereCard(entry, idx, list));
+  // Filter chips
+  const filtersEl = $('review-filters');
+  filtersEl.innerHTML = '';
+  if (sections.length > 1) {
+    filtersEl.style.display = 'flex';
+    sections.forEach(s => {
+      const chip = el('button', 'rf-chip active', '');
+      chip.innerHTML = `${s.label} <span class="rf-count">${s.count}</span>`;
+      chip.dataset.section = s.key;
+      chip.addEventListener('click', () => {
+        chip.classList.toggle('active');
+        const sec = $('review-section-' + s.key);
+        if (sec) sec.style.display = chip.classList.contains('active') ? '' : 'none';
+      });
+      filtersEl.appendChild(chip);
+    });
+  } else {
+    filtersEl.style.display = 'none';
+  }
 
-  // Render individual cards
-  others.forEach(({ entry, idx }) => renderIndividualCard(entry, idx, list));
+  // Render each section in its own wrapper
+  function makeSection(key) {
+    const wrap = el('div', '');
+    wrap.id = 'review-section-' + key;
+    list.appendChild(wrap);
+    return wrap;
+  }
 
-  updateReviewBadge(needsReview);
+  if (dupGroups.size) {
+    const wrap = makeSection('dup');
+    let groupCounter = 0;
+    dupGroups.forEach(({ oktaUser, entries }) => {
+      renderGroupCard(oktaUser, entries, 'g' + groupCounter++, wrap);
+    });
+  }
+
+  if (neosphere.length) {
+    const wrap = makeSection('neo');
+    neosphere.forEach(({ entry, idx }) => renderNeosphereCard(entry, idx, wrap));
+  }
+
+  if (noMatch.length) {
+    const wrap = makeSection('nomatch');
+    noMatch.forEach((entry, idx) => renderNoMatchCard(entry, idx, wrap));
+  }
+
+  if (others.length) {
+    const wrap = makeSection('other');
+    others.forEach(({ entry, idx }) => renderIndividualCard(entry, idx, wrap));
+  }
+
+  updateReviewBadge(needsReview, noMatch);
 }
 
-function updateReviewBadge(needsReview) {
-  const resolved = needsReview.filter(e => e._resolution).length;
-  const total    = needsReview.length;
+function updateReviewBadge(needsReview, noMatch) {
+  noMatch = noMatch || [];
+  const resolved = needsReview.filter(e => e._resolution).length
+                 + noMatch.filter(e => e._resolution).length;
+  const total    = needsReview.length + noMatch.length;
   const badge    = $('review-badge');
   badge.textContent = `${resolved} / ${total} resolved`;
   badge.className = 'review-progress-badge' + (resolved === total ? ' done' : '');
@@ -1748,11 +1871,11 @@ function updateReviewBadge(needsReview) {
 function mergeResolutions(res) {
   const autoMatched  = [...res.autoMatched];
   const needsReview  = [];
-  const noMatch      = [...res.noMatch];
+  const noMatch      = [];
 
   for (const entry of res.needsReview) {
     if (!entry._resolution) {
-      needsReview.push(entry);           // still unresolved
+      needsReview.push(entry);
     } else if (entry._resolution.type === 'match') {
       autoMatched.push({
         ...entry,
@@ -1764,14 +1887,31 @@ function mergeResolutions(res) {
     } else if (entry._resolution.type === 'manualEmail') {
       autoMatched.push({
         ...entry,
-        oktaUser:          null,
-        matchType:         'Manual Email',
-        matchScore:        100,
+        oktaUser:           null,
+        matchType:          'Manual Email',
+        matchScore:         100,
         manualPrimaryEmail: entry._resolution.email,
-        candidates:        []
+        candidates:         []
       });
     } else {
       noMatch.push({ ...entry, noMatchReason: 'Manual Review – No Match' });
+    }
+  }
+
+  for (const entry of res.noMatch) {
+    if (!entry._resolution || entry._resolution.type === 'ignored') {
+      noMatch.push(entry);
+    } else if (entry._resolution.type === 'manualEmail') {
+      autoMatched.push({
+        ...entry,
+        oktaUser:           null,
+        matchType:          'Manual Email',
+        matchScore:         100,
+        manualPrimaryEmail: entry._resolution.email,
+        candidates:         []
+      });
+    } else {
+      noMatch.push(entry);
     }
   }
 
@@ -2042,7 +2182,7 @@ $('analyze-btn').addEventListener('click', async () => {
   log('Ready to download.', 'ok');
 
   updateSummary(S.opsRaw.length, kept.length, S.okta.length, results);
-  renderReviewUI(results.needsReview);
+  renderReviewUI(results.needsReview, results.noMatch);
 
   $('filename-input').value = defaultFilename();
   $('download-row').style.display = 'flex';
