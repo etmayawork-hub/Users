@@ -560,6 +560,7 @@ body {
 .rc-reason.fuzzy   { background: var(--accent-bg);   color: var(--accent);  }
 .rc-reason.dup       { background: var(--danger-bg);   color: var(--danger);  }
 .rc-reason.neosphere { background: var(--info-bg);    color: var(--info);    }
+.rc-reason.aristo    { background: var(--success-bg); color: var(--success); }
 
 .rc-body { padding: 10px 14px 12px; }
 
@@ -981,10 +982,6 @@ hr { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
       <div class="detail-chip">
         <span class="dc-label">Aristocrat Domain</span>
         <span class="dc-val" id="d-domain">—</span>
-      </div>
-      <div class="detail-chip" id="d-aristo-chip" style="display:none">
-        <span class="dc-label">Aristocrat Directory</span>
-        <span class="dc-val" id="d-aristo">—</span>
       </div>
     </div>
   </div>
@@ -1539,8 +1536,9 @@ async function processAll() {
       // Exact full name
       const exact = S.aristo.filter(a => norm(a.firstName + a.lastName) === opFull);
       if (exact.length === 1) {
-        autoMatched.push({ ...entry, status: 'auto', matchType: 'Aristocrat Directory', matchScore: 90,
-          oktaUser: null, manualPrimaryEmail: exact[0].email, candidates: [], reviewReason: null });
+        needsReview.push({ ...entry, status: 'review', matchType: 'Aristocrat Directory',
+          matchScore: 90, oktaUser: null, aristoEmail: exact[0].email,
+          candidates: [], reviewReason: 'Aristocrat Directory' });
         stats.aristo++;
         continue;
       }
@@ -1564,9 +1562,9 @@ async function processAll() {
         fuzzyA.sort((x, y) => y.cs - x.cs);
         const top = fuzzyA[0];
         if (fuzzyA.length === 1 || top.cs - fuzzyA[1].cs >= S.gap) {
-          autoMatched.push({ ...entry, status: 'auto', matchType: 'Aristocrat Directory',
+          needsReview.push({ ...entry, status: 'review', matchType: 'Aristocrat Directory',
             matchScore: Math.round(top.sim * 100), oktaUser: null,
-            manualPrimaryEmail: top.a.email, candidates: [], reviewReason: null });
+            aristoEmail: top.a.email, candidates: [], reviewReason: 'Aristocrat Directory' });
           stats.aristo++;
           continue;
         }
@@ -1890,7 +1888,7 @@ function confirmIndividual(idx) {
 // prefix: 'rcn' for needsReview entries, 'rcm' for noMatch entries
 // reasonLabel/reasonClass: badge text and CSS modifier
 // onConfirm(email|null): called when user confirms or ignores
-function renderManualEmailCard(entry, cardPrefix, idx, reasonLabel, reasonCls, onConfirm, container) {
+function renderManualEmailCard(entry, cardPrefix, idx, reasonLabel, reasonCls, onConfirm, container, initialEmail) {
   const cardId = cardPrefix + '-' + idx;
   const btnId  = cardPrefix + 'btn-' + idx;
 
@@ -1935,6 +1933,15 @@ function renderManualEmailCard(entry, cardPrefix, idx, reasonLabel, reasonCls, o
   dirBtn.target = '_blank';
   dirBtn.rel = 'noopener';
 
+  if (initialEmail) {
+    emailInput.value = initialEmail;
+    const iv = initialEmail.toLowerCase();
+    const iok = iv.endsWith('@aristocrat.com') && iv.length > '@aristocrat.com'.length;
+    emailInput.classList.toggle('valid',   iok);
+    emailInput.classList.toggle('invalid', !iok);
+    confirmBtn.disabled = !iok;
+  }
+
   emailInput.addEventListener('input', () => {
     const val = emailInput.value.trim().toLowerCase();
     const ok  = val.endsWith('@aristocrat.com') && val.length > '@aristocrat.com'.length;
@@ -1978,6 +1985,13 @@ function renderNoMatchCard(entry, idx, container) {
     container);
 }
 
+function renderAristoCard(entry, idx, container) {
+  renderManualEmailCard(entry, 'rca', idx, 'Aristocrat Directory', 'aristo',
+    email => { S.results.needsReview[idx]._resolution = email ? { type: 'manualEmail', email } : { type: 'nomatch' }; },
+    container,
+    entry.aristoEmail || '');
+}
+
 /* ---- main render ---- */
 function renderReviewUI(needsReview, noMatch) {
   const list = $('review-list');
@@ -1995,6 +2009,7 @@ function renderReviewUI(needsReview, noMatch) {
   // Group "Duplicate Okta Primary Email" entries by primary email
   const dupGroups = new Map();
   const neosphere = [];
+  const aristoDir = [];
   const others    = [];
 
   needsReview.forEach((entry, idx) => {
@@ -2005,6 +2020,8 @@ function renderReviewUI(needsReview, noMatch) {
       dupGroups.get(key).entries.push({ entry, idx });
     } else if (entry.reviewReason === 'Neogames Domain') {
       neosphere.push({ entry, idx });
+    } else if (entry.reviewReason === 'Aristocrat Directory') {
+      aristoDir.push({ entry, idx });
     } else {
       others.push({ entry, idx });
     }
@@ -2012,10 +2029,11 @@ function renderReviewUI(needsReview, noMatch) {
 
   // Build sections
   const sections = [
-    { key: 'dup',      label: 'Duplicate Okta Email', count: dupGroups.size },
-    { key: 'neo',      label: 'Neogames Domain',      count: neosphere.length },
-    { key: 'nomatch',  label: 'No Match',              count: noMatch.length  },
-    { key: 'other',    label: 'Other',                 count: others.length   },
+    { key: 'dup',      label: 'Duplicate Okta Email',    count: dupGroups.size  },
+    { key: 'neo',      label: 'Neogames Domain',          count: neosphere.length },
+    { key: 'aristo',   label: 'Aristocrat Directory',     count: aristoDir.length },
+    { key: 'nomatch',  label: 'No Match',                  count: noMatch.length  },
+    { key: 'other',    label: 'Other',                     count: others.length   },
   ].filter(s => s.count > 0);
 
   // Filter chips
@@ -2057,6 +2075,46 @@ function renderReviewUI(needsReview, noMatch) {
   if (neosphere.length) {
     const wrap = makeSection('neo');
     neosphere.forEach(({ entry, idx }) => renderNeosphereCard(entry, idx, wrap));
+  }
+
+  if (aristoDir.length) {
+    const wrap = makeSection('aristo');
+
+    const groupEl = el('div', 'nm-group');
+
+    const head = el('div', 'nm-group-head');
+    const titleSpan = el('span', 'nm-domain', '🏢 Aristocrat Directory');
+    const countSpan = el('span', 'nm-count', aristoDir.length + ' name match' + (aristoDir.length > 1 ? 'es' : ''));
+    const ignoreAllBtn = el('button', 'nm-ignore-all-btn', 'Ignore All');
+    ignoreAllBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      aristoDir.forEach(({ entry }) => {
+        if (!entry._resolution) entry._resolution = { type: 'nomatch' };
+      });
+      body.querySelectorAll('.rc').forEach(c => c.classList.add('rc-resolved'));
+      ignoreAllBtn.textContent = '✓ All Ignored';
+      ignoreAllBtn.disabled = true;
+      updateReviewBadge(S.results.needsReview, S.results.noMatch);
+    });
+    const chevron = el('span', 'nm-chevron', '▼');
+
+    head.appendChild(titleSpan);
+    head.appendChild(countSpan);
+    head.appendChild(ignoreAllBtn);
+    head.appendChild(chevron);
+
+    const body = el('div', 'nm-group-body');
+    aristoDir.forEach(({ entry, idx }) => renderAristoCard(entry, idx, body));
+
+    head.addEventListener('click', e => {
+      if (e.target.closest('.nm-ignore-all-btn')) return;
+      head.classList.toggle('open');
+      body.classList.toggle('open');
+    });
+
+    groupEl.appendChild(head);
+    groupEl.appendChild(body);
+    wrap.appendChild(groupEl);
   }
 
   if (noMatch.length) {
@@ -2284,12 +2342,6 @@ function updateSummary(totRaw, totFilt, totOkta, res) {
   $('d-name').textContent       = res.stats.exact;
   $('d-fuzzy').textContent      = res.stats.fuzzy;
   $('d-domain').textContent     = res.stats.domain;
-  if (res.stats.aristo > 0) {
-    $('d-aristo').textContent    = res.stats.aristo;
-    $('d-aristo-chip').style.display = '';
-  } else {
-    $('d-aristo-chip').style.display = 'none';
-  }
   $('summary-wrap').style.display = 'block';
 }
 
