@@ -585,6 +585,16 @@ body {
 .rc-reason.neosphere { background: var(--info-bg);    color: var(--info);    }
 .rc-reason.aristo    { background: var(--success-bg); color: var(--success); }
 
+/* Aristocrat directory indicator inside manual-email cards */
+.aristo-ind {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: var(--radius-sm);
+  font-size: 12px; font-weight: 600; margin-bottom: 8px;
+}
+.aristo-ind.found { background: var(--success-bg); color: var(--success); border: 1px solid var(--success); }
+.aristo-ind.not-found { background: var(--surface2); color: var(--text-subtle); border: 1px solid var(--border); }
+.aristo-ind-name { font-family: 'JetBrains Mono', monospace; font-weight: 700; }
+
 .rc-body { padding: 10px 14px 12px; }
 
 .rc-candidates {
@@ -1640,6 +1650,49 @@ async function processAll() {
 /* ============================================================
    REVIEW PANEL
 ============================================================ */
+
+// Returns { found: true, email, displayName } or { found: false } or null when no directory loaded.
+function findInAristo(op) {
+  if (!S.aristo.length) return null;
+  const thr     = S.fuzzy / 100;
+  const opFull  = norm(op.fullName);
+  const parts   = (op.fullName || '').trim().split(/\s+/);
+  const opFirst = norm(parts[0] || '');
+  const opLast  = norm(parts.slice(1).join(' '));
+  if (!opFull) return null;
+
+  // Exact full name match
+  const exact = S.aristo.filter(a => norm(a.firstName + a.lastName) === opFull);
+  if (exact.length >= 1) {
+    const a = exact[0];
+    return { found: true, email: a.email, displayName: (a.firstName + ' ' + a.lastName).trim() };
+  }
+
+  // Fuzzy name match
+  const candidates = [];
+  for (const a of S.aristo) {
+    const aFull = norm(a.firstName + a.lastName);
+    if (!aFull) continue;
+    const lr = Math.min(opFull.length, aFull.length) / Math.max(opFull.length, aFull.length);
+    if (lr < 0.45) continue;
+    const sim = fuzzyScore(opFull, aFull);
+    if (sim >= thr) {
+      let cs = sim * 100;
+      if (opFirst && norm(a.firstName) === opFirst) cs += 30;
+      if (opLast  && norm(a.lastName)  === opLast)  cs += 30;
+      candidates.push({ a, sim, cs });
+    }
+  }
+  if (candidates.length) {
+    candidates.sort((x, y) => y.cs - x.cs);
+    const top = candidates[0];
+    if (candidates.length === 1 || top.cs - candidates[1].cs >= S.gap) {
+      return { found: true, email: top.a.email, displayName: (top.a.firstName + ' ' + top.a.lastName).trim() };
+    }
+  }
+  return { found: false };
+}
+
 function reasonClass(reason) {
   if (!reason) return 'name';
   const r = reason.toLowerCase();
@@ -1989,6 +2042,19 @@ function renderManualEmailCard(entry, cardPrefix, idx, reasonLabel, reasonCls, o
   const body = el('div', 'rc-body');
   body.appendChild(el('div', 'rc-q', 'Enter the corresponding Aristocrat.com email, or ignore this operator:'));
 
+  // Aristocrat directory indicator
+  const aristoMatch = findInAristo(entry.op);
+  if (aristoMatch !== null) {
+    const ind = el('div', 'aristo-ind ' + (aristoMatch.found ? 'found' : 'not-found'));
+    if (aristoMatch.found) {
+      ind.appendChild(document.createTextNode('🏢 Found in Aristocrat directory — '));
+      ind.appendChild(el('span', 'aristo-ind-name', aristoMatch.displayName));
+    } else {
+      ind.textContent = '🏢 Not found in Aristocrat directory';
+    }
+    body.appendChild(ind);
+  }
+
   const emailInput = document.createElement('input');
   emailInput.type = 'text';
   emailInput.placeholder = 'e.g. john.doe@aristocrat.com';
@@ -2007,17 +2073,11 @@ function renderManualEmailCard(entry, cardPrefix, idx, reasonLabel, reasonCls, o
   ignoreBtn.style.marginTop = '0';
   ignoreBtn.textContent = 'Ignore';
 
-  const searchName = (entry.op.fullName || entry.op.userName || '').trim();
-  const dirBtn = document.createElement('a');
-  dirBtn.className = 'find-dir-btn';
-  dirBtn.textContent = '🔍 Find in directory';
-  dirBtn.href = 'https://m365.cloud.microsoft/search/people?q=' + encodeURIComponent(searchName);
-  dirBtn.target = '_blank';
-  dirBtn.rel = 'noopener';
-
-  if (initialEmail) {
-    emailInput.value = initialEmail;
-    const iv = initialEmail.toLowerCase();
+  // Prefer explicitly passed initialEmail, then fall back to aristo directory match
+  const prefill = initialEmail || (aristoMatch && aristoMatch.found ? aristoMatch.email : '');
+  if (prefill) {
+    emailInput.value = prefill;
+    const iv = prefill.toLowerCase();
     const iok = iv.endsWith('@aristocrat.com') && iv.length > '@aristocrat.com'.length;
     emailInput.classList.toggle('valid',   iok);
     emailInput.classList.toggle('invalid', !iok);
@@ -2035,7 +2095,6 @@ function renderManualEmailCard(entry, cardPrefix, idx, reasonLabel, reasonCls, o
   // Actions row (visible when unresolved)
   const actionsRow = el('div', 'manual-card-actions');
   actionsRow.style.marginTop = '12px';
-  actionsRow.appendChild(dirBtn);
   actionsRow.appendChild(emailInput);
   actionsRow.appendChild(confirmBtn);
   actionsRow.appendChild(ignoreBtn);
