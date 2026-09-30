@@ -852,10 +852,10 @@ hr { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
   <!-- Upload row -->
   <div class="upload-grid">
     <div class="upload-card" id="ops-card">
-      <input type="file" id="ops-file" accept=".csv" title="Upload Operators CSV">
+      <input type="file" id="ops-file" accept=".csv,.xlsx,.xls" title="Upload Operators CSV or XLSX">
       <span class="uc-icon">📋</span>
       <div class="uc-title">Operators List</div>
-      <div class="uc-hint">CSV &bull; User Name &bull; Full Name &bull; Email &bull; Status &bull; Last Access</div>
+      <div class="uc-hint">CSV or XLSX &bull; User Name &bull; Full Name &bull; Email &bull; Status &bull; Last Access</div>
       <div class="uc-status" id="ops-status"></div>
     </div>
 
@@ -1191,6 +1191,49 @@ function parseOpsCSV(text) {
     status:     String(row[cStatus] || '').trim(),
     lastAccess: row[cLast] != null ? row[cLast] : ''
   }));
+}
+
+/* ============================================================
+   PARSE OPERATORS XLSX  (same columns as CSV but binary format)
+============================================================ */
+function parseOpsXLSX(buf) {
+  const wb   = XLSX.read(new Uint8Array(buf), { type: 'array', cellDates: true });
+  const ws   = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
+
+  if (rows.length < 2) throw new Error('No data rows found in XLSX');
+
+  const H = rows[0].map(h => String(h || '').trim());
+  const cId     = findCol(H, 'ID', 'Id', 'User ID', 'UserId', 'user_id', 'operator_id', 'OperatorId');
+  const cUser   = findCol(H, 'User Name', 'UserName', 'Username', 'Login', 'user_name', 'user');
+  const cFull   = findCol(H, 'Full Name', 'FullName', 'Name', 'Display Name', 'DisplayName');
+  const cEmail  = findCol(H, 'Email', 'Email Address', 'EmailAddress', 'mail', 'e-mail');
+  const cStatus = findCol(H, 'Status', 'State', 'Active');
+  const cLast   = findCol(H, 'Last Access', 'LastAccess', 'Last Login', 'LastLogin',
+                            'Last Seen', 'LastSeen', 'last_access', 'last_login');
+
+  const warn = [];
+  if (!cUser)   warn.push('User Name');
+  if (!cFull)   warn.push('Full Name');
+  if (!cStatus) warn.push('Status');
+  if (!cLast)   warn.push('Last Access');
+  if (warn.length) log(`Operators: could not find columns: ${warn.join(', ')}`, 'warn');
+
+  const iId     = H.indexOf(cId),     iUser = H.indexOf(cUser),
+        iFull   = H.indexOf(cFull),   iEmail = H.indexOf(cEmail),
+        iStatus = H.indexOf(cStatus), iLast  = H.indexOf(cLast);
+
+  return rows.slice(1)
+    .filter(row => row.some(v => v != null && v !== ''))
+    .map((row, i) => ({
+      _row:       i + 2,
+      id:         iId     >= 0 ? String(row[iId]     || '').trim() : '',
+      userName:   iUser   >= 0 ? String(row[iUser]   || '').trim() : '',
+      fullName:   iFull   >= 0 ? String(row[iFull]   || '').trim() : '',
+      email:      iEmail  >= 0 ? String(row[iEmail]  || '').trim() : '',
+      status:     iStatus >= 0 ? String(row[iStatus] || '').trim() : '',
+      lastAccess: iLast   >= 0 && row[iLast] != null && row[iLast] !== '' ? row[iLast] : ''
+    }));
 }
 
 /* ============================================================
@@ -2323,20 +2366,22 @@ function handleOpsFile(file, statusId, cardId) {
   resetPage();
   if (hadOkta)  { S.oktaRaw = hadOkta; setStatus('okta-status', 'okta-card', `✓ ${hadOkta.length} users loaded`, true); }
   if (hadAristo) { S.aristoRaw = hadAristo; S.aristo = hadAristo; setStatus('aristo-status', 'aristo-card', `✓ ${hadAristo.length} employees loaded`, true); }
+  const isXlsx = /\.xlsx?$/i.test(file.name);
   const r = new FileReader();
   r.onload = e => {
     try {
-      const data = parseOpsCSV(e.target.result);
+      const data = isXlsx ? parseOpsXLSX(e.target.result) : parseOpsCSV(e.target.result);
       S.opsRaw = data;
       setStatus(statusId, cardId, `✓ ${data.length} rows loaded`, true);
-      log(`Operators CSV loaded: ${data.length} rows — "${file.name}"`, 'ok');
+      log(`Operators ${isXlsx ? 'XLSX' : 'CSV'} loaded: ${data.length} rows — "${file.name}"`, 'ok');
       checkReady();
     } catch (err) {
       setStatus(statusId, cardId, '✗ ' + err.message, false);
       log('Operators load error: ' + err.message, 'err');
     }
   };
-  r.readAsText(file);
+  if (isXlsx) r.readAsArrayBuffer(file);
+  else r.readAsText(file);
 }
 
 function handleOktaFile(file, statusId, cardId) {
