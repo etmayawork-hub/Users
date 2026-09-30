@@ -638,6 +638,40 @@ body {
 .rc.rc-resolved .rc-confirmed-label { display: inline; }
 .rc.rc-resolved .rc-confirm { display: none; }
 
+/* Manual email card — action / resolved rows */
+.manual-card-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.rc.rc-resolved .manual-card-actions { display: none; }
+.manual-card-resolved { display: none; align-items: center; gap: 10px; flex-wrap: wrap; }
+.rc.rc-resolved .manual-card-resolved { display: flex; }
+.mc-resolved-label { font-size: 12px; font-weight: 600; color: var(--success); }
+.mc-resolved-label.ignored { color: var(--text-muted); }
+
+/* Reverse button — shown on any resolved card */
+.reverse-btn {
+  display: none;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  border: 1px solid var(--border-strong);
+  background: var(--surface2);
+  color: var(--text-muted);
+  transition: border-color .15s, color .15s, background .15s;
+}
+.reverse-btn:hover { border-color: var(--danger); color: var(--danger); background: var(--danger-bg); }
+.rc.rc-resolved .reverse-btn { display: inline-flex; }
+
+/* Group header turns green when all items resolved */
+.nm-group-head.all-resolved { background: var(--success-bg); border-color: var(--success); }
+.nm-group-head.all-resolved .nm-domain,
+.nm-group-head.all-resolved .nm-count { color: var(--success); }
+.nm-resolve-counter { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-subtle); flex-shrink: 0; }
+.nm-group-head.all-resolved .nm-resolve-counter { color: var(--success); font-weight: 700; }
+
 /* Group card: Okta account shown as the subject */
 .rc-subject {
   background: var(--surface2);
@@ -1025,7 +1059,8 @@ const S = {
   results:   null,
   fuzzy:          90,
   gap:            20,
-  lastActiveDays: 0
+  lastActiveDays: 0,
+  groupCounters:  []
 };
 
 /* ============================================================
@@ -1793,6 +1828,18 @@ function renderGroupCard(oktaUser, entries, groupKey, container) {
   const copyBtn = el('button', 'copy-msg-btn', '⎘ Copy message');
   copyBtn.addEventListener('click', () => copyDupMessage(oktaUser, entries, copyBtn));
   footer.appendChild(copyBtn);
+
+  const reverseBtn = el('button', 'reverse-btn', '↩ Reverse');
+  reverseBtn.addEventListener('click', () => {
+    entries.forEach(({ entry }) => delete entry._resolution);
+    $('rcg-' + groupKey).classList.remove('rc-resolved');
+    document.querySelectorAll(`input[name="${radioName}"]`).forEach(r => { r.checked = false; });
+    candWrap.querySelectorAll('.rc-option').forEach(o => o.classList.remove('selected'));
+    $(btnId).disabled = true;
+    updateReviewBadge(S.results.needsReview, S.results.noMatch);
+  });
+  footer.appendChild(reverseBtn);
+
   body.appendChild(footer);
 
   card.appendChild(body);
@@ -1861,6 +1908,18 @@ function renderIndividualCard(entry, idx, container) {
   addNoMatchOption(candWrap, radioName, 'rc' + idx, btnId);
   body.appendChild(candWrap);
   addConfirmFooter(body, btnId, () => confirmIndividual(idx));
+
+  const reverseBtn = el('button', 'reverse-btn', '↩ Reverse');
+  reverseBtn.addEventListener('click', () => {
+    delete entry._resolution;
+    $('rc-' + idx).classList.remove('rc-resolved');
+    document.querySelectorAll(`input[name="${radioName}"]`).forEach(r => { r.checked = false; });
+    candWrap.querySelectorAll('.rc-option').forEach(o => o.classList.remove('selected'));
+    $(btnId).disabled = true;
+    updateReviewBadge(S.results.needsReview, S.results.noMatch);
+  });
+  body.appendChild(reverseBtn);
+
   card.appendChild(body);
   container.appendChild(card);
 }
@@ -1950,24 +2009,44 @@ function renderManualEmailCard(entry, cardPrefix, idx, reasonLabel, reasonCls, o
     confirmBtn.disabled = !ok;
   });
 
+  // Actions row (visible when unresolved)
+  const actionsRow = el('div', 'manual-card-actions');
+  actionsRow.style.marginTop = '12px';
+  actionsRow.appendChild(dirBtn);
+  actionsRow.appendChild(emailInput);
+  actionsRow.appendChild(confirmBtn);
+  actionsRow.appendChild(ignoreBtn);
+  body.appendChild(actionsRow);
+
+  // Resolved row (visible when resolved, via CSS)
+  const resolvedRow = el('div', 'manual-card-resolved');
+  resolvedRow.style.marginTop = '8px';
+  const resolvedLabel = el('span', 'mc-resolved-label', '');
+  const reverseBtn = el('button', 'reverse-btn', '↩ Reverse');
+  resolvedRow.appendChild(resolvedLabel);
+  resolvedRow.appendChild(reverseBtn);
+  body.appendChild(resolvedRow);
+
   confirmBtn.addEventListener('click', () => {
-    onConfirm(emailInput.value.trim());
+    const email = emailInput.value.trim();
+    onConfirm(email);
+    resolvedLabel.textContent = '✓ ' + email;
+    resolvedLabel.className = 'mc-resolved-label';
     card.classList.add('rc-resolved');
     updateReviewBadge(S.results.needsReview, S.results.noMatch);
   });
   ignoreBtn.addEventListener('click', () => {
     onConfirm(null);
+    resolvedLabel.textContent = '✗ Ignored';
+    resolvedLabel.className = 'mc-resolved-label ignored';
     card.classList.add('rc-resolved');
     updateReviewBadge(S.results.needsReview, S.results.noMatch);
   });
-
-  const footer = el('div', '');
-  footer.style.cssText = 'display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:12px;';
-  footer.appendChild(dirBtn);
-  footer.appendChild(emailInput);
-  footer.appendChild(confirmBtn);
-  footer.appendChild(ignoreBtn);
-  body.appendChild(footer);
+  reverseBtn.addEventListener('click', () => {
+    delete entry._resolution;
+    card.classList.remove('rc-resolved');
+    updateReviewBadge(S.results.needsReview, S.results.noMatch);
+  });
 
   card.appendChild(body);
   container.appendChild(card);
@@ -1996,6 +2075,7 @@ function renderAristoCard(entry, idx, container) {
 function renderReviewUI(needsReview, noMatch) {
   const list = $('review-list');
   list.innerHTML = '';
+  S.groupCounters = [];
   noMatch = noMatch || [];
 
   if (!needsReview.length && !noMatch.length) {
@@ -2080,6 +2160,8 @@ function renderReviewUI(needsReview, noMatch) {
     const head = el('div', 'nm-group-head');
     head.appendChild(el('span', 'nm-domain', '@neogames.com'));
     head.appendChild(el('span', 'nm-count', neosphere.length + ' operator' + (neosphere.length > 1 ? 's' : '')));
+    const neoCounter = el('span', 'nm-resolve-counter', '0/' + neosphere.length + ' resolved');
+    head.appendChild(neoCounter);
 
     const ignoreAllBtn = el('button', 'nm-ignore-all-btn', 'Ignore All');
     ignoreAllBtn.addEventListener('click', e => {
@@ -2087,7 +2169,11 @@ function renderReviewUI(needsReview, noMatch) {
       neosphere.forEach(({ entry }) => {
         if (!entry._resolution) entry._resolution = { type: 'nomatch' };
       });
-      body.querySelectorAll('.rc').forEach(c => c.classList.add('rc-resolved'));
+      body.querySelectorAll('.rc').forEach(c => {
+        c.classList.add('rc-resolved');
+        const lbl = c.querySelector('.mc-resolved-label');
+        if (lbl && !lbl.textContent) { lbl.textContent = '✗ Ignored'; lbl.className = 'mc-resolved-label ignored'; }
+      });
       ignoreAllBtn.textContent = '✓ All Ignored';
       ignoreAllBtn.disabled = true;
       updateReviewBadge(S.results.needsReview, S.results.noMatch);
@@ -2097,6 +2183,8 @@ function renderReviewUI(needsReview, noMatch) {
 
     const body = el('div', 'nm-group-body');
     neosphere.forEach(({ entry, idx }) => renderNeosphereCard(entry, idx, body));
+
+    S.groupCounters.push({ counterEl: neoCounter, headEl: head, getEntries: () => neosphere.map(i => i.entry) });
 
     head.addEventListener('click', e => {
       if (e.target.closest('.nm-ignore-all-btn')) return;
@@ -2117,13 +2205,18 @@ function renderReviewUI(needsReview, noMatch) {
     const head = el('div', 'nm-group-head');
     const titleSpan = el('span', 'nm-domain', '🏢 Aristocrat Directory');
     const countSpan = el('span', 'nm-count', aristoDir.length + ' name match' + (aristoDir.length > 1 ? 'es' : ''));
+    const aristoCounter = el('span', 'nm-resolve-counter', '0/' + aristoDir.length + ' resolved');
     const ignoreAllBtn = el('button', 'nm-ignore-all-btn', 'Ignore All');
     ignoreAllBtn.addEventListener('click', e => {
       e.stopPropagation();
       aristoDir.forEach(({ entry }) => {
         if (!entry._resolution) entry._resolution = { type: 'nomatch' };
       });
-      body.querySelectorAll('.rc').forEach(c => c.classList.add('rc-resolved'));
+      body.querySelectorAll('.rc').forEach(c => {
+        c.classList.add('rc-resolved');
+        const lbl = c.querySelector('.mc-resolved-label');
+        if (lbl && !lbl.textContent) { lbl.textContent = '✗ Ignored'; lbl.className = 'mc-resolved-label ignored'; }
+      });
       ignoreAllBtn.textContent = '✓ All Ignored';
       ignoreAllBtn.disabled = true;
       updateReviewBadge(S.results.needsReview, S.results.noMatch);
@@ -2132,11 +2225,14 @@ function renderReviewUI(needsReview, noMatch) {
 
     head.appendChild(titleSpan);
     head.appendChild(countSpan);
+    head.appendChild(aristoCounter);
     head.appendChild(ignoreAllBtn);
     head.appendChild(chevron);
 
     const body = el('div', 'nm-group-body');
     aristoDir.forEach(({ entry, idx }) => renderAristoCard(entry, idx, body));
+
+    S.groupCounters.push({ counterEl: aristoCounter, headEl: head, getEntries: () => aristoDir.map(i => i.entry) });
 
     head.addEventListener('click', e => {
       if (e.target.closest('.nm-ignore-all-btn')) return;
@@ -2170,6 +2266,8 @@ function renderReviewUI(needsReview, noMatch) {
       const head = el('div', 'nm-group-head');
       head.appendChild(el('span', 'nm-domain', '@' + domain));
       head.appendChild(el('span', 'nm-count', items.length + ' operator' + (items.length > 1 ? 's' : '')));
+      const domainCounter = el('span', 'nm-resolve-counter', '0/' + items.length + ' resolved');
+      head.appendChild(domainCounter);
 
       const ignoreAllBtn = el('button', 'nm-ignore-all-btn', 'Ignore All');
       ignoreAllBtn.addEventListener('click', e => {
@@ -2177,7 +2275,11 @@ function renderReviewUI(needsReview, noMatch) {
         items.forEach(({ entry }) => {
           if (!entry._resolution) entry._resolution = { type: 'ignored' };
         });
-        body.querySelectorAll('.rc').forEach(c => c.classList.add('rc-resolved'));
+        body.querySelectorAll('.rc').forEach(c => {
+          c.classList.add('rc-resolved');
+          const lbl = c.querySelector('.mc-resolved-label');
+          if (lbl && !lbl.textContent) { lbl.textContent = '✗ Ignored'; lbl.className = 'mc-resolved-label ignored'; }
+        });
         ignoreAllBtn.textContent = '✓ All Ignored';
         ignoreAllBtn.disabled = true;
         updateReviewBadge(S.results.needsReview, S.results.noMatch);
@@ -2187,6 +2289,8 @@ function renderReviewUI(needsReview, noMatch) {
 
       const body = el('div', 'nm-group-body');
       items.forEach(({ entry, idx }) => renderNoMatchCard(entry, idx, body));
+
+      S.groupCounters.push({ counterEl: domainCounter, headEl: head, getEntries: () => items.map(i => i.entry) });
 
       head.addEventListener('click', e => {
         if (e.target.closest('.nm-ignore-all-btn')) return;
@@ -2216,6 +2320,14 @@ function updateReviewBadge(needsReview, noMatch) {
   const badge    = $('review-badge');
   badge.textContent = `${resolved} / ${total} resolved`;
   badge.className = 'review-progress-badge' + (resolved === total ? ' done' : '');
+
+  for (const { counterEl, headEl, getEntries } of S.groupCounters) {
+    const entries = getEntries();
+    const gRes = entries.filter(e => e._resolution).length;
+    const gTot = entries.length;
+    counterEl.textContent = `${gRes}/${gTot} resolved`;
+    headEl.classList.toggle('all-resolved', gRes > 0 && gRes === gTot);
+  }
 }
 
 /* Merge manual review decisions into the final result sets for export */
