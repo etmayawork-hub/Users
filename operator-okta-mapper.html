@@ -2074,7 +2074,39 @@ function renderReviewUI(needsReview, noMatch) {
 
   if (neosphere.length) {
     const wrap = makeSection('neo');
-    neosphere.forEach(({ entry, idx }) => renderNeosphereCard(entry, idx, wrap));
+
+    const groupEl = el('div', 'nm-group');
+
+    const head = el('div', 'nm-group-head');
+    head.appendChild(el('span', 'nm-domain', '@neogames.com'));
+    head.appendChild(el('span', 'nm-count', neosphere.length + ' operator' + (neosphere.length > 1 ? 's' : '')));
+
+    const ignoreAllBtn = el('button', 'nm-ignore-all-btn', 'Ignore All');
+    ignoreAllBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      neosphere.forEach(({ entry }) => {
+        if (!entry._resolution) entry._resolution = { type: 'nomatch' };
+      });
+      body.querySelectorAll('.rc').forEach(c => c.classList.add('rc-resolved'));
+      ignoreAllBtn.textContent = '✓ All Ignored';
+      ignoreAllBtn.disabled = true;
+      updateReviewBadge(S.results.needsReview, S.results.noMatch);
+    });
+    head.appendChild(ignoreAllBtn);
+    head.appendChild(el('span', 'nm-chevron', '▼'));
+
+    const body = el('div', 'nm-group-body');
+    neosphere.forEach(({ entry, idx }) => renderNeosphereCard(entry, idx, body));
+
+    head.addEventListener('click', e => {
+      if (e.target.closest('.nm-ignore-all-btn')) return;
+      head.classList.toggle('open');
+      body.classList.toggle('open');
+    });
+
+    groupEl.appendChild(head);
+    groupEl.appendChild(body);
+    wrap.appendChild(groupEl);
   }
 
   if (aristoDir.length) {
