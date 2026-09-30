@@ -484,6 +484,29 @@ body {
 .rf-chip.active   { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
 .rf-chip .rf-count { font-family: 'JetBrains Mono', monospace; font-size: 11px; }
 
+/* Review section headers */
+.review-section-hdr {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 24px 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--border);
+}
+.review-section-hdr:first-child { margin-top: 0; }
+.review-section-hdr-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.review-section-hdr-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
 /* Find in directory button */
 .find-dir-btn {
   display: inline-flex;
@@ -2107,14 +2130,19 @@ function renderReviewUI(needsReview, noMatch) {
     }
   });
 
-  // Build sections
+  // Build 3 top-level sections
+  const emailsCount = neosphere.length + others.length + noMatch.length;
   const sections = [
-    { key: 'dup',      label: 'Duplicate Okta Email',    count: dupGroups.size  },
-    { key: 'neo',      label: 'Neogames Domain',          count: neosphere.length },
-    { key: 'aristo',   label: 'Aristocrat Directory',     count: aristoDir.length },
-    { key: 'nomatch',  label: 'No Match',                  count: noMatch.length  },
-    { key: 'other',    label: 'Other',                     count: others.length   },
+    { key: 'dup',    label: 'Duplicated',               count: dupGroups.size  },
+    { key: 'aristo', label: 'Name Matched in Directory', count: aristoDir.length },
+    { key: 'emails', label: 'Emails Match',              count: emailsCount     },
   ].filter(s => s.count > 0);
+
+  const sectionMeta = {
+    dup:    { title: 'Duplicated',               desc: 'Multiple operators were matched to the same Okta account. Select which operator this account belongs to, or mark the others as unresolvable.' },
+    aristo: { title: 'Name Matched in Directory', desc: 'These operators were found by name in the uploaded Aristocrat employee directory. Verify and confirm the suggested email address before including in the export.' },
+    emails: { title: 'Emails Match',              desc: 'Operators where Okta candidates were found via email or name matching, or where no automatic match was possible. Select the correct account, enter an email manually, or ignore.' },
+  };
 
   // Filter chips
   const filtersEl = $('review-filters');
@@ -2136,10 +2164,17 @@ function renderReviewUI(needsReview, noMatch) {
     filtersEl.style.display = 'none';
   }
 
-  // Render each section in its own wrapper
+  // Render each section with a titled header
   function makeSection(key) {
     const wrap = el('div', '');
     wrap.id = 'review-section-' + key;
+    const meta = sectionMeta[key];
+    if (meta) {
+      const hdr = el('div', 'review-section-hdr');
+      hdr.appendChild(el('span', 'review-section-hdr-title', meta.title));
+      hdr.appendChild(el('span', 'review-section-hdr-desc', meta.desc));
+      wrap.appendChild(hdr);
+    }
     list.appendChild(wrap);
     return wrap;
   }
@@ -2150,51 +2185,6 @@ function renderReviewUI(needsReview, noMatch) {
     dupGroups.forEach(({ oktaUser, entries }) => {
       renderGroupCard(oktaUser, entries, 'g' + groupCounter++, wrap);
     });
-  }
-
-  if (neosphere.length) {
-    const wrap = makeSection('neo');
-
-    const groupEl = el('div', 'nm-group');
-
-    const head = el('div', 'nm-group-head');
-    head.appendChild(el('span', 'nm-domain', '@neogames.com'));
-    head.appendChild(el('span', 'nm-count', neosphere.length + ' operator' + (neosphere.length > 1 ? 's' : '')));
-    const neoCounter = el('span', 'nm-resolve-counter', '0/' + neosphere.length + ' resolved');
-    head.appendChild(neoCounter);
-
-    const ignoreAllBtn = el('button', 'nm-ignore-all-btn', 'Ignore All');
-    ignoreAllBtn.addEventListener('click', e => {
-      e.stopPropagation();
-      neosphere.forEach(({ entry }) => {
-        if (!entry._resolution) entry._resolution = { type: 'nomatch' };
-      });
-      body.querySelectorAll('.rc').forEach(c => {
-        c.classList.add('rc-resolved');
-        const lbl = c.querySelector('.mc-resolved-label');
-        if (lbl && !lbl.textContent) { lbl.textContent = '✗ Ignored'; lbl.className = 'mc-resolved-label ignored'; }
-      });
-      ignoreAllBtn.textContent = '✓ All Ignored';
-      ignoreAllBtn.disabled = true;
-      updateReviewBadge(S.results.needsReview, S.results.noMatch);
-    });
-    head.appendChild(ignoreAllBtn);
-    head.appendChild(el('span', 'nm-chevron', '▼'));
-
-    const body = el('div', 'nm-group-body');
-    neosphere.forEach(({ entry, idx }) => renderNeosphereCard(entry, idx, body));
-
-    S.groupCounters.push({ counterEl: neoCounter, headEl: head, getEntries: () => neosphere.map(i => i.entry) });
-
-    head.addEventListener('click', e => {
-      if (e.target.closest('.nm-ignore-all-btn')) return;
-      head.classList.toggle('open');
-      body.classList.toggle('open');
-    });
-
-    groupEl.appendChild(head);
-    groupEl.appendChild(body);
-    wrap.appendChild(groupEl);
   }
 
   if (aristoDir.length) {
@@ -2245,68 +2235,113 @@ function renderReviewUI(needsReview, noMatch) {
     wrap.appendChild(groupEl);
   }
 
-  if (noMatch.length) {
-    const wrap = makeSection('nomatch');
+  if (emailsCount) {
+    const wrap = makeSection('emails');
 
-    // Group by email domain, sorted by count descending
-    const byDomain = new Map();
-    noMatch.forEach((entry, idx) => {
-      const email = (entry.op.email || '').toLowerCase();
-      const at = email.indexOf('@');
-      const domain = at >= 0 ? email.slice(at + 1) : '(no email)';
-      if (!byDomain.has(domain)) byDomain.set(domain, []);
-      byDomain.get(domain).push({ entry, idx });
-    });
-    const sortedDomains = [...byDomain.entries()].sort((a, b) => b[1].length - a[1].length);
-
-    for (const [domain, items] of sortedDomains) {
+    // Neogames domain — collapsed group
+    if (neosphere.length) {
       const groupEl = el('div', 'nm-group');
 
-      // Group header (collapsed by default)
       const head = el('div', 'nm-group-head');
-      head.appendChild(el('span', 'nm-domain', '@' + domain));
-      head.appendChild(el('span', 'nm-count', items.length + ' operator' + (items.length > 1 ? 's' : '')));
-      const domainCounter = el('span', 'nm-resolve-counter', '0/' + items.length + ' resolved');
-      head.appendChild(domainCounter);
+      head.appendChild(el('span', 'nm-domain', '@neogames.com'));
+      head.appendChild(el('span', 'nm-count', neosphere.length + ' operator' + (neosphere.length > 1 ? 's' : '')));
+      const neoCounter = el('span', 'nm-resolve-counter', '0/' + neosphere.length + ' resolved');
+      head.appendChild(neoCounter);
 
-      const ignoreAllBtn = el('button', 'nm-ignore-all-btn', 'Ignore All');
-      ignoreAllBtn.addEventListener('click', e => {
+      const neoIgnoreAll = el('button', 'nm-ignore-all-btn', 'Ignore All');
+      neoIgnoreAll.addEventListener('click', e => {
         e.stopPropagation();
-        items.forEach(({ entry }) => {
-          if (!entry._resolution) entry._resolution = { type: 'ignored' };
+        neosphere.forEach(({ entry }) => {
+          if (!entry._resolution) entry._resolution = { type: 'nomatch' };
         });
-        body.querySelectorAll('.rc').forEach(c => {
+        neoBody.querySelectorAll('.rc').forEach(c => {
           c.classList.add('rc-resolved');
           const lbl = c.querySelector('.mc-resolved-label');
           if (lbl && !lbl.textContent) { lbl.textContent = '✗ Ignored'; lbl.className = 'mc-resolved-label ignored'; }
         });
-        ignoreAllBtn.textContent = '✓ All Ignored';
-        ignoreAllBtn.disabled = true;
+        neoIgnoreAll.textContent = '✓ All Ignored';
+        neoIgnoreAll.disabled = true;
         updateReviewBadge(S.results.needsReview, S.results.noMatch);
       });
-      head.appendChild(ignoreAllBtn);
+      head.appendChild(neoIgnoreAll);
       head.appendChild(el('span', 'nm-chevron', '▼'));
 
-      const body = el('div', 'nm-group-body');
-      items.forEach(({ entry, idx }) => renderNoMatchCard(entry, idx, body));
+      const neoBody = el('div', 'nm-group-body');
+      neosphere.forEach(({ entry, idx }) => renderNeosphereCard(entry, idx, neoBody));
 
-      S.groupCounters.push({ counterEl: domainCounter, headEl: head, getEntries: () => items.map(i => i.entry) });
+      S.groupCounters.push({ counterEl: neoCounter, headEl: head, getEntries: () => neosphere.map(i => i.entry) });
 
       head.addEventListener('click', e => {
         if (e.target.closest('.nm-ignore-all-btn')) return;
         head.classList.toggle('open');
-        body.classList.toggle('open');
+        neoBody.classList.toggle('open');
       });
 
       groupEl.appendChild(head);
-      groupEl.appendChild(body);
+      groupEl.appendChild(neoBody);
       wrap.appendChild(groupEl);
     }
-  }
 
-  if (others.length) {
-    const wrap = makeSection('other');
-    others.forEach(({ entry, idx }) => renderIndividualCard(entry, idx, wrap));
+    // Individual radio cards (fuzzy / name / email matches)
+    if (others.length) {
+      others.forEach(({ entry, idx }) => renderIndividualCard(entry, idx, wrap));
+    }
+
+    // No Match — collapsed groups by email domain
+    if (noMatch.length) {
+      const byDomain = new Map();
+      noMatch.forEach((entry, idx) => {
+        const email = (entry.op.email || '').toLowerCase();
+        const at = email.indexOf('@');
+        const domain = at >= 0 ? email.slice(at + 1) : '(no email)';
+        if (!byDomain.has(domain)) byDomain.set(domain, []);
+        byDomain.get(domain).push({ entry, idx });
+      });
+      const sortedDomains = [...byDomain.entries()].sort((a, b) => b[1].length - a[1].length);
+
+      for (const [domain, items] of sortedDomains) {
+        const groupEl = el('div', 'nm-group');
+
+        const head = el('div', 'nm-group-head');
+        head.appendChild(el('span', 'nm-domain', '@' + domain));
+        head.appendChild(el('span', 'nm-count', items.length + ' operator' + (items.length > 1 ? 's' : '')));
+        const domainCounter = el('span', 'nm-resolve-counter', '0/' + items.length + ' resolved');
+        head.appendChild(domainCounter);
+
+        const ignoreAllBtn = el('button', 'nm-ignore-all-btn', 'Ignore All');
+        ignoreAllBtn.addEventListener('click', e => {
+          e.stopPropagation();
+          items.forEach(({ entry }) => {
+            if (!entry._resolution) entry._resolution = { type: 'ignored' };
+          });
+          domBody.querySelectorAll('.rc').forEach(c => {
+            c.classList.add('rc-resolved');
+            const lbl = c.querySelector('.mc-resolved-label');
+            if (lbl && !lbl.textContent) { lbl.textContent = '✗ Ignored'; lbl.className = 'mc-resolved-label ignored'; }
+          });
+          ignoreAllBtn.textContent = '✓ All Ignored';
+          ignoreAllBtn.disabled = true;
+          updateReviewBadge(S.results.needsReview, S.results.noMatch);
+        });
+        head.appendChild(ignoreAllBtn);
+        head.appendChild(el('span', 'nm-chevron', '▼'));
+
+        const domBody = el('div', 'nm-group-body');
+        items.forEach(({ entry, idx }) => renderNoMatchCard(entry, idx, domBody));
+
+        S.groupCounters.push({ counterEl: domainCounter, headEl: head, getEntries: () => items.map(i => i.entry) });
+
+        head.addEventListener('click', e => {
+          if (e.target.closest('.nm-ignore-all-btn')) return;
+          head.classList.toggle('open');
+          domBody.classList.toggle('open');
+        });
+
+        groupEl.appendChild(head);
+        groupEl.appendChild(domBody);
+        wrap.appendChild(groupEl);
+      }
+    }
   }
 
   updateReviewBadge(needsReview, noMatch);
