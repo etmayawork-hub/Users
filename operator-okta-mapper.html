@@ -1550,7 +1550,18 @@ async function processAll() {
         autoMatched.push({ op: ops[i], status: 'auto', matchType: 'Aristocrat Domain', matchScore: 100, oktaUser: null, candidates: [], reviewReason: null });
         stats.domain++;
       } else if (opEmail.endsWith('@neogames.com')) {
-        needsReview.push({ op: ops[i], status: 'review', matchType: null, matchScore: null, oktaUser: null, candidates: [], reviewReason: 'Neogames Domain' });
+        // Promote to Aristocrat Directory review if the name matches the employee list
+        const am = findInAristo(ops[i]);
+        if (am && am.found) {
+          needsReview.push({ op: ops[i], status: 'review', matchType: 'Aristocrat Directory',
+            matchScore: 90, oktaUser: null, aristoEmail: am.email,
+            candidates: [], reviewReason: 'Aristocrat Directory' });
+          stats.aristo++;
+        } else {
+          needsReview.push({ op: ops[i], status: 'review', matchType: null, matchScore: null,
+            oktaUser: null, candidates: [], reviewReason: 'Neogames Domain' });
+          stats.domain++;
+        }
       } else {
         noMatch.push({ op: ops[i], ...res });
       }
