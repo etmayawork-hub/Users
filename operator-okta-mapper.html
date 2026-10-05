@@ -740,7 +740,8 @@ body {
   color: var(--accent);
 }
 
-.rc-subject-local {
+.rc-subject-local,
+.rc-subject-last-login {
   font-family: 'JetBrains Mono', monospace;
   font-size: 10px;
   color: var(--text-subtle);
@@ -1319,6 +1320,9 @@ function parseOktaXLSX(buf) {
   const cEmail  = findCol(H, 'Primary email', 'PrimaryEmail', 'Email', 'EmailAddress');
   const cLocal  = findCol(H, 'localUsername', 'local_username', 'LocalUsername',
                              'Username', 'Login', 'SamAccountName');
+  const cLogin  = findCol(H, 'Last login', 'Last Login', 'LastLogin', 'last_login',
+                             'Last Active', 'LastActive', 'Last Seen', 'LastSeen',
+                             'Last Sign In', 'lastSignIn');
 
   const warn = [];
   if (!cFirst) warn.push('First name');
@@ -1329,16 +1333,24 @@ function parseOktaXLSX(buf) {
 
   const idxOf = name => name ? H.indexOf(name) : -1;
   const iF = idxOf(cFirst), iL = idxOf(cLast),
-        iE = idxOf(cEmail), iLU = idxOf(cLocal);
+        iE = idxOf(cEmail), iLU = idxOf(cLocal), iLL = idxOf(cLogin);
+
+  const toDate = v => {
+    if (!v) return null;
+    if (v instanceof Date) return isNaN(v) ? null : v;
+    const d = new Date(v);
+    return isNaN(d) ? null : d;
+  };
 
   return rows.slice(1)
     .filter(row => row.some(v => v != null && v !== ''))
     .map((row, i) => ({
-      _row:         i + 2,
-      firstName:    iF  >= 0 ? String(row[iF]  || '').trim() : '',
-      lastName:     iL  >= 0 ? String(row[iL]  || '').trim() : '',
-      primaryEmail: iE  >= 0 ? String(row[iE]  || '').trim() : '',
-      localUsername: iLU >= 0 ? String(row[iLU] || '').trim() : ''
+      _row:          i + 2,
+      firstName:     iF  >= 0 ? String(row[iF]  || '').trim() : '',
+      lastName:      iL  >= 0 ? String(row[iL]  || '').trim() : '',
+      primaryEmail:  iE  >= 0 ? String(row[iE]  || '').trim() : '',
+      localUsername: iLU >= 0 ? String(row[iLU] || '').trim() : '',
+      lastLogin:     iLL >= 0 ? toDate(row[iLL]) : null
     }))
     .filter(u => u.primaryEmail || u.firstName || u.lastName);
 }
@@ -1881,6 +1893,10 @@ function renderGroupCard(oktaUser, entries, groupKey, container) {
   subjDetail.appendChild(el('span', 'rc-subject-email', oktaUser.primaryEmail || '—'));
   if (oktaUser.localUsername && oktaUser.localUsername !== oktaUser.primaryEmail)
     subjDetail.appendChild(el('span', 'rc-subject-local', 'local: ' + oktaUser.localUsername));
+  const loginText = oktaUser.lastLogin
+    ? 'Last login: ' + oktaUser.lastLogin.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+    : 'Last login: unknown';
+  subjDetail.appendChild(el('span', 'rc-subject-last-login', loginText));
   subj.appendChild(subjDetail);
   card.appendChild(subj);
 
