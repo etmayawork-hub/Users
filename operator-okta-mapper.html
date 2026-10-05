@@ -761,6 +761,7 @@ body {
 .op-username { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; color: var(--accent); }
 .op-fullname { font-weight: 600; font-size: 13px; color: var(--text); }
 .op-email    { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); }
+.op-last-access { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-subtle); }
 
 /* Copy-message button */
 .copy-msg-btn {
@@ -1868,6 +1869,13 @@ Thank you,
   window.location.href = mailto;
 }
 
+function fmtDate(v) {
+  if (!v) return null;
+  const d = v instanceof Date ? v : new Date(v);
+  if (isNaN(d)) return String(v);
+  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
 /* ---- GROUP card: one Okta account → pick which operator ---- */
 function renderGroupCard(oktaUser, entries, groupKey, container) {
   const oktaName = ((oktaUser.firstName || '') + ' ' + (oktaUser.lastName || '')).trim();
@@ -1893,10 +1901,6 @@ function renderGroupCard(oktaUser, entries, groupKey, container) {
   subjDetail.appendChild(el('span', 'rc-subject-email', oktaUser.primaryEmail || '—'));
   if (oktaUser.localUsername && oktaUser.localUsername !== oktaUser.primaryEmail)
     subjDetail.appendChild(el('span', 'rc-subject-local', 'local: ' + oktaUser.localUsername));
-  const loginText = oktaUser.lastLogin
-    ? 'Last login: ' + oktaUser.lastLogin.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
-    : 'Last login: unknown';
-  subjDetail.appendChild(el('span', 'rc-subject-last-login', loginText));
   subj.appendChild(subjDetail);
   card.appendChild(subj);
 
@@ -1913,6 +1917,8 @@ function renderGroupCard(oktaUser, entries, groupKey, container) {
       if (entry.op.fullName) row.appendChild(el('span', 'op-fullname', entry.op.fullName));
       lbl.appendChild(row);
       if (entry.op.email) lbl.appendChild(el('span', 'op-email', entry.op.email));
+      const la = fmtDate(entry.op.lastAccess);
+      lbl.appendChild(el('span', 'op-last-access', la ? 'Last access: ' + la : 'Last access: unknown'));
     });
     radio.addEventListener('change', () => {
       candWrap.querySelectorAll('.rc-option').forEach(o => o.classList.remove('selected'));
