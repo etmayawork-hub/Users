@@ -1443,6 +1443,7 @@ function buildIndex(okta) {
 ============================================================ */
 function matchOne(op, okta, idx, fuzzyThr, gapThr) {
   const opEmail = norm(op.email);
+  const opUser  = norm(op.userName);
   const opFull  = norm(op.fullName);
 
   // Split full name for bonus scoring
@@ -1450,25 +1451,37 @@ function matchOne(op, okta, idx, fuzzyThr, gapThr) {
   const opFirst = parts.length ? norm(parts[0]) : '';
   const opLast  = parts.length > 1 ? norm(parts[parts.length - 1]) : '';
 
+  // Distinct email candidates: op.email first, then op.userName if it differs
+  // (covers Azure AD format where mail ≠ userPrincipalName)
+  const emailCandidates = [opEmail, (opUser && opUser !== opEmail ? opUser : null)].filter(Boolean);
+
   /* ---- Priority 1 : Primary email match ---- */
-  if (opEmail) {
-    const em = idx.byPE.get(opEmail) || [];
+  for (const ec of emailCandidates) {
+    const em = idx.byPE.get(ec) || [];
     if (em.length === 1) return { status: 'auto',   matchType: 'Exact Email',   matchScore: 100, oktaUser: em[0], candidates: [], reviewReason: null };
     if (em.length > 1)  return { status: 'review', matchType: 'Exact Email',   matchScore: 100, oktaUser: null,  candidates: em,  reviewReason: 'Multiple Email Matches' };
+  }
 
-    /* ---- Priority 2 : localUsername match ---- */
-    const lm = idx.byLU.get(opEmail) || [];
+  /* ---- Priority 2 : localUsername match ---- */
+  for (const ec of emailCandidates) {
+    const lm = idx.byLU.get(ec) || [];
     if (lm.length === 1) return { status: 'auto',   matchType: 'Local Username', matchScore: 95, oktaUser: lm[0], candidates: [], reviewReason: null };
     if (lm.length > 1)  return { status: 'review', matchType: 'Local Username', matchScore: 95, oktaUser: null,  candidates: lm,  reviewReason: 'Multiple Local Username Matches' };
   }
 
   /* ---- Priority 3 : Email local-part match (exact then fuzzy) ---- */
-  const opLocal = emailLocal(op.email);
-  if (opLocal) {
+  // Try local part from both op.email and op.userName (deduped)
+  const localCandidates = [...new Set(
+    [op.email, (op.userName && op.userName !== op.email ? op.userName : null)].filter(Boolean).map(emailLocal).filter(Boolean)
+  )];
+  const opLocal = localCandidates[0] || '';
+  for (const lc of localCandidates) {
     // Exact local-part match after stripping special chars
-    const el = idx.byEL.get(opLocal) || [];
+    const el = idx.byEL.get(lc) || [];
     if (el.length === 1) return { status: 'auto',   matchType: 'Email Local Part', matchScore: 92, oktaUser: el[0], candidates: [],  reviewReason: null };
     if (el.length > 1)  return { status: 'review', matchType: 'Email Local Part', matchScore: 92, oktaUser: null,  candidates: el,  reviewReason: 'Multiple Email Local Matches' };
+  }
+  if (opLocal) {
 
     // Fuzzy local-part match using the configured threshold
     const thr = fuzzyThr / 100;
