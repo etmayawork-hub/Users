@@ -1428,11 +1428,15 @@ function parseAristoXLSX(buf) {
    FILTER OPERATORS
    Keep: Status = "Enabled" (+ optional last-active cutoff)
 ============================================================ */
+const DISABLED_STATUSES = new Set(['disabled', 'inactive', 'suspended', 'deprovisioned', 'locked', 'locked out', 'false', '0']);
+
 function filterOps(ops) {
   const kept = [], dropped = [];
   const cutoff = S.lastActiveDays > 0 ? Date.now() - S.lastActiveDays * 24 * 3600 * 1000 : null;
   for (const op of ops) {
-    if (op.status.toLowerCase() !== 'enabled') { dropped.push(op); continue; }
+    const st = (op.status || '').toLowerCase();
+    // Drop only explicitly disabled statuses; treat unknown/empty/Member/Active/etc. as kept
+    if (st && DISABLED_STATUSES.has(st)) { dropped.push(op); continue; }
     if (cutoff) {
       const dt = parseDate(op.lastAccess);
       if (!dt || dt.getTime() < cutoff) { dropped.push(op); continue; }
