@@ -1235,30 +1235,39 @@ function parseOpsCSV(text) {
   if (!r.data.length) throw new Error('No data rows found in CSV');
 
   const H = r.meta.fields || [];
-  const cId     = findCol(H, 'ID', 'Id', 'User ID', 'UserId', 'user_id', 'operator_id', 'OperatorId');
-  const cUser   = findCol(H, 'User Name', 'UserName', 'Username', 'Login', 'user_name', 'user');
-  const cFull   = findCol(H, 'Full Name', 'FullName', 'Name', 'Display Name', 'DisplayName');
+  const cId     = findCol(H, 'ID', 'Id', 'User ID', 'UserId', 'user_id', 'operator_id', 'OperatorId', 'id');
+  const cUser   = findCol(H, 'User Name', 'UserName', 'Username', 'Login', 'user_name', 'user', 'userPrincipalName');
+  const cFull   = findCol(H, 'Full Name', 'FullName', 'Name', 'Display Name', 'DisplayName', 'displayName');
   const cEmail  = findCol(H, 'Email', 'Email Address', 'EmailAddress', 'mail', 'e-mail');
-  const cStatus = findCol(H, 'Status', 'State', 'Active');
+  const cStatus = findCol(H, 'Status', 'State', 'Active', 'userType');
   const cLast   = findCol(H, 'Last Access', 'LastAccess', 'Last Login', 'LastLogin',
                             'Last Seen', 'LastSeen', 'last_access', 'last_login');
+  const cIsUser = findCol(H, 'isUser');
 
   const warn = [];
   if (!cUser)   warn.push('User Name');
   if (!cFull)   warn.push('Full Name');
-  if (!cStatus) warn.push('Status');
   if (!cLast)   warn.push('Last Access');
   if (warn.length) log(`Operators: could not find columns: ${warn.join(', ')}`, 'warn');
 
-  return r.data.map((row, i) => ({
-    _row:       i + 2,
-    id:         cId   ? String(row[cId]   || '').trim() : '',
-    userName:   String(row[cUser]   || '').trim(),
-    fullName:   String(row[cFull]   || '').trim(),
-    email:      String(row[cEmail]  || '').trim(),
-    status:     String(row[cStatus] || '').trim(),
-    lastAccess: row[cLast] != null ? row[cLast] : ''
-  }));
+  const normalizeDisplayName = s => {
+    if (!s) return s;
+    const comma = s.indexOf(',');
+    if (comma === -1) return s;
+    return s.slice(comma + 1).trim() + ' ' + s.slice(0, comma).trim();
+  };
+
+  return r.data
+    .filter(row => !cIsUser || String(row[cIsUser] || '').toLowerCase() !== 'false')
+    .map((row, i) => ({
+      _row:       i + 2,
+      id:         cId   ? String(row[cId]   || '').trim() : '',
+      userName:   String(row[cUser]   || '').trim(),
+      fullName:   normalizeDisplayName(String(row[cFull]   || '').trim()),
+      email:      String(row[cEmail]  || '').trim(),
+      status:     String(row[cStatus] || '').trim(),
+      lastAccess: row[cLast] != null ? row[cLast] : ''
+    }));
 }
 
 /* ============================================================
@@ -1272,32 +1281,41 @@ function parseOpsXLSX(buf) {
   if (rows.length < 2) throw new Error('No data rows found in XLSX');
 
   const H = rows[0].map(h => String(h || '').trim());
-  const cId     = findCol(H, 'ID', 'Id', 'User ID', 'UserId', 'user_id', 'operator_id', 'OperatorId');
-  const cUser   = findCol(H, 'User Name', 'UserName', 'Username', 'Login', 'user_name', 'user');
-  const cFull   = findCol(H, 'Full Name', 'FullName', 'Name', 'Display Name', 'DisplayName');
+  const cId     = findCol(H, 'ID', 'Id', 'User ID', 'UserId', 'user_id', 'operator_id', 'OperatorId', 'id');
+  const cUser   = findCol(H, 'User Name', 'UserName', 'Username', 'Login', 'user_name', 'user', 'userPrincipalName');
+  const cFull   = findCol(H, 'Full Name', 'FullName', 'Name', 'Display Name', 'DisplayName', 'displayName');
   const cEmail  = findCol(H, 'Email', 'Email Address', 'EmailAddress', 'mail', 'e-mail');
-  const cStatus = findCol(H, 'Status', 'State', 'Active');
+  const cStatus = findCol(H, 'Status', 'State', 'Active', 'userType');
   const cLast   = findCol(H, 'Last Access', 'LastAccess', 'Last Login', 'LastLogin',
                             'Last Seen', 'LastSeen', 'last_access', 'last_login');
+  const cIsUser = findCol(H, 'isUser');
 
   const warn = [];
   if (!cUser)   warn.push('User Name');
   if (!cFull)   warn.push('Full Name');
-  if (!cStatus) warn.push('Status');
   if (!cLast)   warn.push('Last Access');
   if (warn.length) log(`Operators: could not find columns: ${warn.join(', ')}`, 'warn');
 
   const iId     = H.indexOf(cId),     iUser = H.indexOf(cUser),
         iFull   = H.indexOf(cFull),   iEmail = H.indexOf(cEmail),
-        iStatus = H.indexOf(cStatus), iLast  = H.indexOf(cLast);
+        iStatus = H.indexOf(cStatus), iLast  = H.indexOf(cLast),
+        iIsUser = H.indexOf(cIsUser);
+
+  const normalizeDisplayName = s => {
+    if (!s) return s;
+    const comma = s.indexOf(',');
+    if (comma === -1) return s;
+    return s.slice(comma + 1).trim() + ' ' + s.slice(0, comma).trim();
+  };
 
   return rows.slice(1)
     .filter(row => row.some(v => v != null && v !== ''))
+    .filter(row => iIsUser < 0 || String(row[iIsUser] || '').toLowerCase() !== 'false')
     .map((row, i) => ({
       _row:       i + 2,
       id:         iId     >= 0 ? String(row[iId]     || '').trim() : '',
       userName:   iUser   >= 0 ? String(row[iUser]   || '').trim() : '',
-      fullName:   iFull   >= 0 ? String(row[iFull]   || '').trim() : '',
+      fullName:   iFull   >= 0 ? normalizeDisplayName(String(row[iFull] || '').trim()) : '',
       email:      iEmail  >= 0 ? String(row[iEmail]  || '').trim() : '',
       status:     iStatus >= 0 ? String(row[iStatus] || '').trim() : '',
       lastAccess: iLast   >= 0 && row[iLast] != null && row[iLast] !== '' ? row[iLast] : ''
