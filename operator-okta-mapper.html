@@ -1334,24 +1334,25 @@ function parseOktaXLSX(buf) {
 
   const H = rows[0].map(h => String(h || '').trim());
 
-  const cFirst  = findCol(H, 'First name', 'FirstName', 'First', 'GivenName');
-  const cLast   = findCol(H, 'Last name',  'LastName',  'Last',  'SurName', 'FamilyName');
-  const cEmail  = findCol(H, 'Primary email', 'PrimaryEmail', 'Email', 'EmailAddress');
-  const cLocal  = findCol(H, 'localUsername', 'local_username', 'LocalUsername',
-                             'Username', 'Login', 'SamAccountName');
-  const cLogin  = findCol(H, 'Last login', 'Last Login', 'LastLogin', 'last_login',
-                             'Last Active', 'LastActive', 'Last Seen', 'LastSeen',
-                             'Last Sign In', 'lastSignIn');
+  const cFirst   = findCol(H, 'First name', 'FirstName', 'First', 'GivenName');
+  const cLast    = findCol(H, 'Last name',  'LastName',  'Last',  'SurName', 'FamilyName');
+  const cDisplay = findCol(H, 'displayName', 'Display Name', 'DisplayName', 'Name');
+  const cEmail   = findCol(H, 'Primary email', 'PrimaryEmail', 'Email', 'EmailAddress', 'mail');
+  const cLocal   = findCol(H, 'localUsername', 'local_username', 'LocalUsername',
+                              'Username', 'Login', 'SamAccountName', 'userPrincipalName');
+  const cLogin   = findCol(H, 'Last login', 'Last Login', 'LastLogin', 'last_login',
+                              'Last Active', 'LastActive', 'Last Seen', 'LastSeen',
+                              'Last Sign In', 'lastSignIn');
 
   const warn = [];
-  if (!cFirst) warn.push('First name');
-  if (!cLast)  warn.push('Last name');
+  if (!cFirst && !cDisplay) warn.push('First name / displayName');
+  if (!cLast  && !cDisplay) warn.push('Last name / displayName');
   if (!cEmail) warn.push('Primary email');
   if (!cLocal) warn.push('localUsername');
   if (warn.length) log(`Okta: could not find columns: ${warn.join(', ')}`, 'warn');
 
   const idxOf = name => name ? H.indexOf(name) : -1;
-  const iF = idxOf(cFirst), iL = idxOf(cLast),
+  const iF = idxOf(cFirst), iL = idxOf(cLast), iD = idxOf(cDisplay),
         iE = idxOf(cEmail), iLU = idxOf(cLocal), iLL = idxOf(cLogin);
 
   const toDate = v => {
@@ -1361,16 +1362,35 @@ function parseOktaXLSX(buf) {
     return isNaN(d) ? null : d;
   };
 
+  // Parse "Last, First" displayName → { firstName, lastName }
+  const splitDisplay = raw => {
+    const s = String(raw || '').trim();
+    if (!s) return { firstName: '', lastName: '' };
+    const comma = s.indexOf(',');
+    if (comma === -1) {
+      const parts = s.split(/\s+/);
+      return { firstName: parts[0] || '', lastName: parts.slice(1).join(' ') };
+    }
+    return { firstName: s.slice(comma + 1).trim(), lastName: s.slice(0, comma).trim() };
+  };
+
   return rows.slice(1)
     .filter(row => row.some(v => v != null && v !== ''))
-    .map((row, i) => ({
-      _row:          i + 2,
-      firstName:     iF  >= 0 ? String(row[iF]  || '').trim() : '',
-      lastName:      iL  >= 0 ? String(row[iL]  || '').trim() : '',
-      primaryEmail:  iE  >= 0 ? String(row[iE]  || '').trim() : '',
-      localUsername: iLU >= 0 ? String(row[iLU] || '').trim() : '',
-      lastLogin:     iLL >= 0 ? toDate(row[iLL]) : null
-    }))
+    .map((row, i) => {
+      let firstName = iF >= 0 ? String(row[iF] || '').trim() : '';
+      let lastName  = iL >= 0 ? String(row[iL] || '').trim() : '';
+      if (!firstName && !lastName && iD >= 0) {
+        ({ firstName, lastName } = splitDisplay(row[iD]));
+      }
+      return {
+        _row:          i + 2,
+        firstName,
+        lastName,
+        primaryEmail:  iE  >= 0 ? String(row[iE]  || '').trim() : '',
+        localUsername: iLU >= 0 ? String(row[iLU] || '').trim() : '',
+        lastLogin:     iLL >= 0 ? toDate(row[iLL]) : null
+      };
+    })
     .filter(u => u.primaryEmail || u.firstName || u.lastName);
 }
 
